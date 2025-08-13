@@ -1,0 +1,13 @@
+{
+  "name": "@dapr/testcontainer-node",
+  "version": "1.0.0",
+  "description": "Dapr TestContainer for Node JS",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Dapr Authors",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.14.0"
+}
