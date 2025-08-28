@@ -25,21 +25,18 @@ type HttpEndpointResource = {
 };
 
 export class HttpEndpoint {
-  constructor(
-    public readonly name: string,
-    public readonly baseUrl: string
-  ) {}
+  constructor(public readonly name: string, public readonly baseUrl: string) {}
 
   toYaml(): string {
-    const resource: HttpEndpointResource= {
+    const resource: HttpEndpointResource = {
       apiVersion: "dapr.io/v1alpha1",
       kind: "HTTPEndpoint",
       metadata: {
-        name: this.name
+        name: this.name,
       },
       spec: {
-        baseUrl: this.baseUrl
-      }
+        baseUrl: this.baseUrl,
+      },
     };
     return YAML.stringify(resource, { indentSeq: false });
   }

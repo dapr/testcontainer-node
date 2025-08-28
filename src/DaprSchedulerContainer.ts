@@ -18,8 +18,7 @@ export class DaprSchedulerContainer extends GenericContainer {
 
   constructor(image: string) {
     super(image);
-    this.withWaitStrategy(Wait.forLogMessage(/Dapr Scheduler listening/))
-      .withStartupTimeout(120_000)
+    this.withWaitStrategy(Wait.forLogMessage(/Dapr Scheduler listening/)).withStartupTimeout(120_000);
   }
 
   protected async beforeContainerCreated(): Promise<void> {

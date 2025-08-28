@@ -23,10 +23,10 @@ describe("DaprContainer", () => {
   it("should load component from path", async () => {
     const componentPath = path.join(__dirname, "__fixtures__", "dapr-resources", "statestore.yaml");
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
-        .withAppName("dapr-app")
-        .withAppPort(8081)
-        .withComponentFromPath(componentPath)
-        .withAppChannelAddress("host.testcontainers.internal");
+      .withAppName("dapr-app")
+      .withAppPort(8081)
+      .withComponentFromPath(componentPath)
+      .withAppChannelAddress("host.testcontainers.internal");
     const components = dapr.getComponents();
     expect(components.length).toBe(1);
     const kvstore = components[0];
@@ -91,7 +91,7 @@ describe("DaprContainer", () => {
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withDaprLogLevel("debug")
-      .withAppChannelAddress("host.testcontainers.internal")
+      .withAppChannelAddress("host.testcontainers.internal");
     const startedContainer = await dapr.start();
 
     const client = new DaprClient({
@@ -141,7 +141,7 @@ describe("DaprContainer", () => {
       .withAppPort(appPort)
       .withDaprLogLevel("info")
       .withDaprApiLoggingEnabled(false)
-      .withAppChannelAddress("host.testcontainers.internal")
+      .withAppChannelAddress("host.testcontainers.internal");
     const startedContainer = await dapr.start();
 
     const client = new DaprClient({
@@ -181,7 +181,7 @@ describe("DaprContainer", () => {
           routes: {
             default: "/orders",
           },
-        }
+        },
       ]);
     });
 
@@ -204,7 +204,7 @@ describe("DaprContainer", () => {
       .withAppPort(appPort)
       .withDaprLogLevel("info")
       .withDaprApiLoggingEnabled(false)
-      .withAppChannelAddress("host.testcontainers.internal")
+      .withAppChannelAddress("host.testcontainers.internal");
     const startedContainer = await dapr.start();
 
     const client = new DaprClient({

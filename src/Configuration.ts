@@ -16,12 +16,10 @@ import YAML from "yaml";
 export type ListEntry = {
   name: string;
   type: string;
-}
+};
 
 export class AppHttpPipeline {
-  constructor(
-    public readonly handlers: ListEntry[]
-  ) {}
+  constructor(public readonly handlers: ListEntry[]) {}
 }
 
 export class OtelTracingConfigurationSettings {
@@ -33,9 +31,7 @@ export class OtelTracingConfigurationSettings {
 }
 
 export class ZipkinTracingConfigurationSettings {
-  constructor(
-    public readonly endpointAddress?: string
-  ) {}
+  constructor(public readonly endpointAddress?: string) {}
 }
 
 export class TracingConfigurationSettings {
@@ -61,11 +57,11 @@ type ConfigurationResource = {
 
 /**
  * Configuration class for Dapr.
- * 
+ *
  * @remarks
  * This class is used to create a configuration object for Dapr. It includes
  * tracing and appHttpPipeline settings.
- * 
+ *
  * @example
  * ```typescript
  * const config = new Configuration("my-config", tracingConfig, appHttpPipeline);
@@ -73,7 +69,6 @@ type ConfigurationResource = {
  * ```
  */
 export class Configuration {
-
   // TODO: add secrets
   // TODO: add metrics
   // TODO: add logging
@@ -84,7 +79,7 @@ export class Configuration {
 
   /**
    * Creates a new configuration.
-   * 
+   *
    * @param name            Configuration name.
    * @param tracing         TracingConfigParameters tracing configuration
    *                        parameters.
@@ -101,12 +96,12 @@ export class Configuration {
       apiVersion: "dapr.io/v1alpha1",
       kind: "Configuration",
       metadata: {
-        name: this.name
+        name: this.name,
       },
       spec: {
         ...{ tracing: this.tracing },
         ...{ appHttpPipeline: this.appHttpPipeline },
-      }
+      },
     };
     return YAML.stringify(resource, { indentSeq: false });
   }

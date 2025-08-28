@@ -21,7 +21,7 @@ import {
   StartedTestContainer,
   StopOptions,
   StoppedTestContainer,
-  Wait
+  Wait,
 } from "testcontainers";
 import { Component } from "./Component";
 import { Configuration } from "./Configuration";
@@ -63,9 +63,12 @@ export class DaprContainer extends GenericContainer {
   constructor(image = DAPR_RUNTIME_IMAGE) {
     super(image);
     this.withExposedPorts(DAPRD_DEFAULT_HTTP_PORT, DAPRD_DEFAULT_GRPC_PORT)
-      .withWaitStrategy(Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT)
-        .forStatusCodeMatching((statusCode) => statusCode >= 200 && statusCode <= 399))
-      .withStartupTimeout(120_000)
+      .withWaitStrategy(
+        Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
+          (statusCode) => statusCode >= 200 && statusCode <= 399
+        )
+      )
+      .withStartupTimeout(120_000);
   }
 
   public withNetwork(network: StartedNetwork): this {
@@ -78,7 +81,7 @@ export class DaprContainer extends GenericContainer {
     if (!this.placementContainer) {
       const container = new DaprPlacementContainer(this.placementImage)
         .withNetwork(this.startedNetwork)
-        .withNetworkAliases(this.placementService)
+        .withNetworkAliases(this.placementService);
       if (this.shouldReusePlacement) {
         container.withReuse().withAutoRemove(false);
       }
@@ -93,10 +96,7 @@ export class DaprContainer extends GenericContainer {
       }
       this.schedulerContainer = container;
     }
-    const containers = await Promise.all([
-      this.placementContainer.start(),
-      this.schedulerContainer.start(),
-    ]);
+    const containers = await Promise.all([this.placementContainer.start(), this.schedulerContainer.start()]);
     return new StartedDaprContainer(await super.start(), containers);
   }
 
@@ -150,7 +150,7 @@ export class DaprContainer extends GenericContainer {
       log.info("> Configuration YAML: \n");
       log.info(`\t\n${configurationYaml}\n`);
       this.withCopyContentToContainer([
-        { content: configurationYaml, target: `/dapr-resources/${this.configuration.name}.yaml` }
+        { content: configurationYaml, target: `/dapr-resources/${this.configuration.name}.yaml` },
       ]);
     }
 
@@ -167,9 +167,7 @@ export class DaprContainer extends GenericContainer {
       const componentYaml = component.toYaml();
       log.info("> Component YAML: \n");
       log.info(`\t\n${componentYaml}\n`);
-      this.withCopyContentToContainer([
-        { content: componentYaml, target: `/dapr-resources/${component.name}.yaml` }
-      ]);
+      this.withCopyContentToContainer([{ content: componentYaml, target: `/dapr-resources/${component.name}.yaml` }]);
     }
 
     for (const subscription of this.subscriptions) {
@@ -177,7 +175,7 @@ export class DaprContainer extends GenericContainer {
       log.info("> Subscription YAML: \n");
       log.info(`\t\n${subscriptionYaml}\n`);
       this.withCopyContentToContainer([
-        { content: subscriptionYaml, target: `/dapr-resources/${subscription.name}.yaml` }
+        { content: subscriptionYaml, target: `/dapr-resources/${subscription.name}.yaml` },
       ]);
     }
 
@@ -185,9 +183,7 @@ export class DaprContainer extends GenericContainer {
       const endpointYaml = endpoint.toYaml();
       log.info("> HTTPEndpoint YAML: \n");
       log.info(`\t\n${endpointYaml}\n`);
-      this.withCopyContentToContainer([
-        { content: endpointYaml, target: `/dapr-resources/${endpoint.name}.yaml` }
-      ]);
+      this.withCopyContentToContainer([{ content: endpointYaml, target: `/dapr-resources/${endpoint.name}.yaml` }]);
     }
   }
 

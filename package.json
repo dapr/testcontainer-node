@@ -1,7 +1,7 @@
 {
   "name": "@dapr/testcontainer-node",
   "version": "0.5.0",
-  "description": "Dapr TestContainer for Node JS",
+  "description": "Dapr TestContainer for NodeJS",
   "keywords": [],
   "license": "Apache-2.0",
   "author": "Dapr Authors",
@@ -19,6 +19,9 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "pretty": "prettier --list-different \"**/*.{ts,js,json,md}\"",
+    "pretty-fix": "prettier --write package.json \"**/*.{ts,js,json,md}\"",
     "test": "jest"
   },
   "dependencies": {
@@ -30,8 +33,15 @@
     "@types/body-parser": "^1.19.6",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.1.0",
+    "@typescript-eslint/parser": "^5.1.0",
     "body-parser": "^2.2.0",
+    "eslint": "^8.1.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-header": "^3.1.1",
+    "eslint-plugin-prettier": "^4.2.1",
     "express": "^5.1.0",
+    "prettier": "^2.4.0",
     "ts-jest": "^29.4.1",
     "typescript": "^5.9.2"
   }

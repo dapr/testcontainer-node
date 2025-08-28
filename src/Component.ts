@@ -75,6 +75,6 @@ export class Component {
     const resource: ComponentResource = YAML.parse(src);
     const metadata = resource.metadata;
     const spec = resource.spec;
-    return new Component(metadata.name, spec.type, spec.version, (spec.metadata ?? []));
+    return new Component(metadata.name, spec.type, spec.version, spec.metadata ?? []);
   }
 }

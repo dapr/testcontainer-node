@@ -30,7 +30,7 @@ type SubscriptionResource = {
     routes: {
       rules?: Rule[];
       default?: string;
-    }
+    };
   };
 };
 
@@ -48,16 +48,16 @@ export class Subscription {
       apiVersion: "dapr.io/v2alpha1",
       kind: "Subscription",
       metadata: {
-        name: this.name
+        name: this.name,
       },
       spec: {
         pubsubname: this.pubsubName,
         topic: this.topic,
         routes: {
           ...{ rules: this.rules },
-          ...{ default: this.defaultRoute }
-        }
-      }
+          ...{ default: this.defaultRoute },
+        },
+      },
     };
     return YAML.stringify(resource, { indentSeq: false });
   }

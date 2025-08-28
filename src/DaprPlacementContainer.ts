@@ -18,8 +18,7 @@ export class DaprPlacementContainer extends GenericContainer {
 
   constructor(image: string) {
     super(image);
-    this.withWaitStrategy(Wait.forLogMessage(/Placement service started/))
-      .withStartupTimeout(120_000)
+    this.withWaitStrategy(Wait.forLogMessage(/Placement service started/)).withStartupTimeout(120_000);
   }
 
   protected async beforeContainerCreated(): Promise<void> {
