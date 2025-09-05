@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "prepack": "npm run build",
     "pretty": "prettier --list-different \"**/*.{ts,js,json,md}\"",
     "pretty-fix": "prettier --write package.json \"**/*.{ts,js,json,md}\"",
     "test": "jest"
