@@ -1,13 +1,49 @@
 {
   "name": "@dapr/testcontainer-node",
-  "version": "1.0.0",
-  "description": "Dapr TestContainer for Node JS",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "version": "0.5.0",
+  "description": "Dapr TestContainer for NodeJS",
   "keywords": [],
-  "author": "Dapr Authors",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@10.14.0"
+  "author": "Dapr Authors",
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dapr/testcontainer-node.git"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "prepack": "npm run build",
+    "pretty": "prettier --list-different \"**/*.{ts,js,json,md}\"",
+    "pretty-fix": "prettier --write package.json \"**/*.{ts,js,json,md}\"",
+    "test": "jest"
+  },
+  "dependencies": {
+    "testcontainers": "^11.5.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@dapr/dapr": "^3.5.2",
+    "@types/body-parser": "^1.19.6",
+    "@types/express": "^5.0.3",
+    "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.1.0",
+    "@typescript-eslint/parser": "^5.1.0",
+    "body-parser": "^2.2.0",
+    "eslint": "^8.1.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-header": "^3.1.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "express": "^5.1.0",
+    "prettier": "^2.4.0",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.9.2"
+  }
 }
