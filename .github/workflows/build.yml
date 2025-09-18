@@ -52,7 +52,7 @@ jobs:
 
       - name: Run unit tests
         id: tests
-        run: npm run test
+        run: npm test
 
       - name: Upload test coverage
         uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
