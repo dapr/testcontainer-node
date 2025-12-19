@@ -30,7 +30,7 @@ import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
 import { Subscription } from "./Subscription";
 
-export const DAPR_VERSION = "1.15.10";
+export const DAPR_VERSION = "1.16.4";
 export const DAPR_RUNTIME_IMAGE = `daprio/daprd:${DAPR_VERSION}`;
 export const DAPR_PLACEMENT_IMAGE = `daprio/placement:${DAPR_VERSION}`;
 export const DAPR_SCHEDULER_IMAGE = `daprio/scheduler:${DAPR_VERSION}`;
@@ -350,5 +350,9 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getGrpcEndpoint(): string {
     return `:${this.getMappedPort(DAPRD_DEFAULT_GRPC_PORT)}`;
+  }
+
+  async [Symbol.asyncDispose]() {
+    await this.stop();
   }
 }

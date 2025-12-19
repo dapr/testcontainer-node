@@ -12,7 +12,6 @@ limitations under the License.
 */
 
 import path from "node:path";
-import { promisify } from "node:util";
 import bodyParser from "body-parser";
 import express from "express";
 import { Network, TestContainers } from "testcontainers";
@@ -51,28 +50,26 @@ describe("DaprContainer", () => {
   });
 
   it("should start and stop", async () => {
-    const network = await new Network().start();
+    await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withDaprLogLevel("debug")
       .withAppChannelAddress("host.testcontainers.internal");
-    const startedContainer = await dapr.start();
+    await using startedContainer = await dapr.start();
     expect(startedContainer.getHost()).toBeDefined();
     expect(startedContainer.getHttpPort()).toBeDefined();
     expect(startedContainer.getGrpcPort()).toBeDefined();
     expect(startedContainer.getHttpEndpoint()).toBeDefined();
     expect(startedContainer.getGrpcEndpoint()).toBeDefined();
-    await startedContainer.stop();
-    await network.stop();
   }, 60_000);
 
   it("should initialize DaprClient", async () => {
-    const network = await new Network().start();
+    await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withDaprLogLevel("debug")
       .withAppChannelAddress("host.testcontainers.internal");
-    const startedContainer = await dapr.start();
+    await using startedContainer = await dapr.start();
 
     const client = new DaprClient({
       daprHost: startedContainer.getHost(),
@@ -81,18 +78,15 @@ describe("DaprContainer", () => {
     await client.start();
     expect(client.getIsInitialized()).toBe(true);
     await client.stop();
-
-    await startedContainer.stop();
-    await network.stop();
   }, 60_000);
 
   it("should provide kvstore in memory by default", async () => {
-    const network = await new Network().start();
+    await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withDaprLogLevel("debug")
       .withAppChannelAddress("host.testcontainers.internal");
-    const startedContainer = await dapr.start();
+    await using startedContainer = await dapr.start();
 
     const client = new DaprClient({
       daprHost: startedContainer.getHost(),
@@ -107,9 +101,6 @@ describe("DaprContainer", () => {
     const resultAfterDelete = await client.state.get("kvstore", "key");
     expect(resultAfterDelete).toBe("");
     await client.stop();
-
-    await startedContainer.stop();
-    await network.stop();
   }, 60_000);
 
   it("should provide pubsub in memory by default", async () => {
@@ -130,19 +121,19 @@ describe("DaprContainer", () => {
     });
 
     const appPort = 8081;
-    const server = app.listen(appPort, () => {
+    await using _server = app.listen(appPort, () => {
       console.log(`Server is listening on port ${appPort}`);
     });
     await TestContainers.exposeHostPorts(appPort);
 
-    const network = await new Network().start();
+    await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withAppPort(appPort)
       .withDaprLogLevel("info")
       .withDaprApiLoggingEnabled(false)
       .withAppChannelAddress("host.testcontainers.internal");
-    const startedContainer = await dapr.start();
+    await using startedContainer = await dapr.start();
 
     const client = new DaprClient({
       daprHost: startedContainer.getHost(),
@@ -158,9 +149,6 @@ describe("DaprContainer", () => {
     expect(data).toEqual({ key: "key", value: "value" });
 
     await client.stop();
-    await startedContainer.stop();
-    await network.stop();
-    await promisify(server.close.bind(server))();
   }, 60_000);
 
   it("should route messages programmatically", async () => {
@@ -193,19 +181,19 @@ describe("DaprContainer", () => {
     });
 
     const appPort = 8082;
-    const server = app.listen(appPort, () => {
+    await using _server = app.listen(appPort, () => {
       console.log(`Server is listening on port ${appPort}`);
     });
     await TestContainers.exposeHostPorts(appPort);
 
-    const network = await new Network().start();
+    await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
       .withNetwork(network)
       .withAppPort(appPort)
       .withDaprLogLevel("info")
       .withDaprApiLoggingEnabled(false)
       .withAppChannelAddress("host.testcontainers.internal");
-    const startedContainer = await dapr.start();
+    await using startedContainer = await dapr.start();
 
     const client = new DaprClient({
       daprHost: startedContainer.getHost(),
@@ -221,8 +209,5 @@ describe("DaprContainer", () => {
     expect(data).toEqual({ key: "key", value: "value" });
 
     await client.stop();
-    await startedContainer.stop();
-    await network.stop();
-    await promisify(server.close.bind(server))();
   }, 60_000);
 });
