@@ -326,7 +326,10 @@ export class DaprContainer extends GenericContainer {
 }
 
 export class StartedDaprContainer extends AbstractStartedContainer {
-  constructor(startedTestContainer: StartedTestContainer, private readonly containers: StartedTestContainer[]) {
+  constructor(
+    startedTestContainer: StartedTestContainer,
+    private readonly containers: StartedTestContainer[]
+  ) {
     super(startedTestContainer);
   }
 
@@ -350,9 +353,5 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getGrpcEndpoint(): string {
     return `:${this.getMappedPort(DAPRD_DEFAULT_GRPC_PORT)}`;
-  }
-
-  async [Symbol.asyncDispose]() {
-    await this.stop();
   }
 }

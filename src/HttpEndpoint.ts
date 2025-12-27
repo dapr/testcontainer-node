@@ -25,7 +25,10 @@ type HttpEndpointResource = {
 };
 
 export class HttpEndpoint {
-  constructor(public readonly name: string, public readonly baseUrl: string) {}
+  constructor(
+    public readonly name: string,
+    public readonly baseUrl: string
+  ) {}
 
   toYaml(): string {
     const resource: HttpEndpointResource = {
