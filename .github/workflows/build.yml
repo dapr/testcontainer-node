@@ -26,33 +26,47 @@ on:
   # Manual trigger
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   NODE_VER: 24.7.0
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node_version: [24.7.0]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node ${{ matrix.node_version }}
+      - name: Setup Node ${{ env.NODE_VER }}
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node_version }}
+          node-version: ${{ env.NODE_VER }}
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build package (install dependencies, lint, prettier, build)
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run pretty
+
+      - name: Build package
         run: npm run build
 
       - name: Run unit tests
         id: tests
         run: npm test
+
+      - name: Check package contents
+        run: npm pack --dry-run --ignore-scripts
 
       - name: Upload test coverage
         uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
@@ -62,6 +76,9 @@ jobs:
     if: startswith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -70,11 +87,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VER }}
           registry-url: "https://registry.npmjs.org"
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
       - name: Publish to npm (@dapr/testcontainer-node)
-        run: npm publish
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
