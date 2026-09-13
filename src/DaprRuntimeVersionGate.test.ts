@@ -118,21 +118,15 @@ describe("DaprRuntimeVersionGate", () => {
 
   describe("compareDaprVersions", () => {
     it("should correctly compare major, minor, and patch versions", () => {
-      expect(
-        compareDaprVersions({ major: 1, minor: 18, patch: 0 }, { major: 1, minor: 18, patch: 0 })
-      ).toBe(0);
-      expect(
-        compareDaprVersions({ major: 2, minor: 0, patch: 0 }, { major: 1, minor: 18, patch: 0 })
-      ).toBeGreaterThan(0);
-      expect(
-        compareDaprVersions({ major: 1, minor: 17, patch: 0 }, { major: 1, minor: 18, patch: 0 })
-      ).toBeLessThan(0);
-      expect(
-        compareDaprVersions({ major: 1, minor: 18, patch: 1 }, { major: 1, minor: 18, patch: 0 })
-      ).toBeGreaterThan(0);
-      expect(
-        compareDaprVersions({ major: 1, minor: 18, patch: 0 }, { major: 1, minor: 18, patch: 1 })
-      ).toBeLessThan(0);
+      expect(compareDaprVersions({ major: 1, minor: 18, patch: 0 }, { major: 1, minor: 18, patch: 0 })).toBe(0);
+      expect(compareDaprVersions({ major: 2, minor: 0, patch: 0 }, { major: 1, minor: 18, patch: 0 })).toBeGreaterThan(
+        0
+      );
+      expect(compareDaprVersions({ major: 1, minor: 17, patch: 0 }, { major: 1, minor: 18, patch: 0 })).toBeLessThan(0);
+      expect(compareDaprVersions({ major: 1, minor: 18, patch: 1 }, { major: 1, minor: 18, patch: 0 })).toBeGreaterThan(
+        0
+      );
+      expect(compareDaprVersions({ major: 1, minor: 18, patch: 0 }, { major: 1, minor: 18, patch: 1 })).toBeLessThan(0);
     });
   });
 
@@ -141,9 +135,7 @@ describe("DaprRuntimeVersionGate", () => {
       expect(() => DaprRuntimeVersionGate.isMinimumSatisfied("invalid")).toThrow(
         "Invalid minimum Dapr runtime version 'invalid'."
       );
-      expect(() => DaprRuntimeVersionGate.isMinimumSatisfied("")).toThrow(
-        "Invalid minimum Dapr runtime version ''."
-      );
+      expect(() => DaprRuntimeVersionGate.isMinimumSatisfied("")).toThrow("Invalid minimum Dapr runtime version ''.");
     });
 
     it("should return satisfied when current version is unset or whitespace", () => {

@@ -163,10 +163,7 @@ function getGlobalDescribe(): any {
   return undefined;
 }
 
-function wrapTestFn(
-  minimumVersion: string,
-  fn?: jest.ProvidesCallback
-): jest.ProvidesCallback | undefined {
+function wrapTestFn(minimumVersion: string, fn?: jest.ProvidesCallback): jest.ProvidesCallback | undefined {
   if (!fn) {
     return undefined;
   }
