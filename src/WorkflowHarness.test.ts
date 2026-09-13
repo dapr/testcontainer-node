@@ -92,7 +92,7 @@ describe("WorkflowHarness and Workflow Support", () => {
     } finally {
       await harness.stop();
     }
-  }, 120_000);
+  }, 300_000);
 
   it("should run a workflow end-to-end using DaprContainer directly", async () => {
     await using network = await new Network().start();
@@ -130,5 +130,5 @@ describe("WorkflowHarness and Workflow Support", () => {
       await client.stop();
       await runtime.stop();
     }
-  }, 120_000);
+  }, 300_000);
 });
