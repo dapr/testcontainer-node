@@ -12,11 +12,12 @@ limitations under the License.
 */
 
 import { GenericContainer, Wait } from "testcontainers";
+import { getDaprSchedulerImage } from "./Constants";
 
 export class DaprSchedulerContainer extends GenericContainer {
   private schedulerPort = 51005;
 
-  constructor(image: string) {
+  constructor(image: string = getDaprSchedulerImage()) {
     super(image);
     this.withWaitStrategy(Wait.forLogMessage(/Dapr Scheduler listening/)).withStartupTimeout(120_000);
   }

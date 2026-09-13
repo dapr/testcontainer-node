@@ -11,5 +11,4 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// See https://github.com/dapr/js-sdk/issues/728
-declare module "@dapr/dapr";
+export {};

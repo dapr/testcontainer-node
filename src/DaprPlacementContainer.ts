@@ -12,11 +12,12 @@ limitations under the License.
 */
 
 import { GenericContainer, Wait } from "testcontainers";
+import { getDaprPlacementImage } from "./Constants";
 
 export class DaprPlacementContainer extends GenericContainer {
   private placementPort = 50005;
 
-  constructor(image: string) {
+  constructor(image: string = getDaprPlacementImage()) {
     super(image);
     this.withWaitStrategy(Wait.forLogMessage(/Placement service started/)).withStartupTimeout(120_000);
   }
