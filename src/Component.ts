@@ -12,11 +12,9 @@ limitations under the License.
 */
 
 import YAML from "yaml";
+import { MetadataEntry } from "./MetadataEntry";
 
-export type MetadataEntry = {
-  readonly name: string;
-  readonly value: string;
-};
+export { MetadataEntry };
 
 type ComponentResource = {
   apiVersion: "dapr.io/v1alpha1";
