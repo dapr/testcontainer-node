@@ -20,6 +20,8 @@ export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
 export * from "./HttpEndpoint";
 export * from "./MetadataEntry";
+export * from "./PubSubHarness";
+export * from "./RabbitMQContainer";
 export * from "./RedisContainer";
 export * from "./Subscription";
 export * from "./WorkflowHarness";

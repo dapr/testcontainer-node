@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts) and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
 
 ## Using the library
 
@@ -31,6 +31,24 @@ You can also specify a custom image when instantiating containers:
 import { DaprContainer, getDaprRuntimeImage } from "@dapr/testcontainer-node";
 
 const dapr = new DaprContainer(getDaprRuntimeImage("1.18.4"));
+```
+
+## Dapr PubSub Testing
+
+You can use `PubSubHarness` or `.withPubSub()` on `DaprContainer` to test Dapr PubSub with an automated RabbitMQ message broker:
+
+```typescript
+import { PubSubHarness } from "@dapr/testcontainer-node";
+
+const harness = new PubSubHarness({
+  appPort: 8080,
+});
+await harness.start();
+
+const client = harness.createDaprClient();
+await client.pubsub.publish(harness.getPubSubName(), "my-topic", { message: "Hello World" });
+
+await harness.stop();
 ```
 
 ## Dapr Workflow Testing

@@ -37,6 +37,7 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import { RABBITMQ_DEFAULT_PORT, RabbitMQContainer } from "./RabbitMQContainer";
 import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
 import { Subscription } from "./Subscription";
 
@@ -66,6 +67,16 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type PubSubOptions = {
+  pubsubName?: string;
+  rabbitMQContainer?: RabbitMQContainer;
+  rabbitMQHost?: string;
+  username?: string;
+  password?: string;
+  protocol?: string;
+  requeueInFailure?: boolean;
+};
+
 export class DaprContainer extends GenericContainer {
   private daprLogLevel = "info";
   private daprApiLogging = false;
@@ -76,16 +87,21 @@ export class DaprContainer extends GenericContainer {
   private placementService = "placement";
   private schedulerService = "scheduler";
   private redisService = "redis";
+  private rabbitMQService = "rabbitmq";
   private placementImage = getDaprPlacementImage();
   private schedulerImage = getDaprSchedulerImage();
   private placementContainer?: DaprPlacementContainer;
   private schedulerContainer?: DaprSchedulerContainer;
   private redisContainer?: RedisContainer;
+  private rabbitMQContainer?: RabbitMQContainer;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
+  private shouldReuseRabbitMQ = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private pubSubEnabled = false;
+  private pubSubOptions?: PubSubOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -151,6 +167,28 @@ export class DaprContainer extends GenericContainer {
 
       if (this.redisContainer) {
         startTasks.push(this.redisContainer.start());
+      }
+    }
+
+    if (this.pubSubEnabled || this.rabbitMQContainer) {
+      if (!this.rabbitMQContainer) {
+        // Only auto-create RabbitMQ if no external host is configured
+        if (!this.pubSubOptions?.rabbitMQHost) {
+          const container = new RabbitMQContainer()
+            .withNetwork(this.startedNetwork)
+            .withNetworkAliases(this.rabbitMQService);
+          if (this.shouldReuseRabbitMQ) {
+            container.withReuse().withAutoRemove(false);
+          }
+          this.rabbitMQContainer = container;
+        }
+      } else {
+        // Attach explicitly supplied RabbitMQ container to the network and alias
+        this.rabbitMQContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.rabbitMQService);
+      }
+
+      if (this.rabbitMQContainer) {
+        startTasks.push(this.rabbitMQContainer.start());
       }
     }
 
@@ -228,6 +266,25 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.pubSubEnabled) {
+      const pubsubName = this.pubSubOptions?.pubsubName ?? DaprComponentNames.PubSubComponentName;
+      const alreadyHasPubSub = this.components.some((c) => c.name === pubsubName);
+      if (!alreadyHasPubSub) {
+        const hostname =
+          this.pubSubOptions?.rabbitMQHost ??
+          `${this.rabbitMQService}:${this.rabbitMQContainer ? this.rabbitMQContainer.getPort() : RABBITMQ_DEFAULT_PORT}`;
+        const rabbitMQPubSub = RabbitMQContainer.createPubSubComponent({
+          name: pubsubName,
+          hostname,
+          username: this.pubSubOptions?.username,
+          password: this.pubSubOptions?.password,
+          protocol: this.pubSubOptions?.protocol,
+          requeueInFailure: this.pubSubOptions?.requeueInFailure,
+        });
+        this.components.push(rabbitMQPubSub);
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -297,8 +354,24 @@ export class DaprContainer extends GenericContainer {
     return this.redisContainer;
   }
 
+  getRabbitMQService(): string {
+    return this.rabbitMQService;
+  }
+
+  getRabbitMQContainer(): RabbitMQContainer | undefined {
+    return this.rabbitMQContainer;
+  }
+
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isPubSubEnabled(): boolean {
+    return this.pubSubEnabled;
+  }
+
+  getPubSubOptions(): PubSubOptions | undefined {
+    return this.pubSubOptions;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -402,6 +475,11 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withReusableRabbitMQ(shouldReuseRabbitMQ: boolean): this {
+    this.shouldReuseRabbitMQ = shouldReuseRabbitMQ;
+    return this;
+  }
+
   withPlacementContainer(placementContainer: DaprPlacementContainer): this {
     this.placementContainer = placementContainer;
     return this;
@@ -418,11 +496,31 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withRabbitMQService(rabbitMQService: string): this {
+    this.rabbitMQService = rabbitMQService;
+    return this;
+  }
+
+  withRabbitMQContainer(rabbitMQContainer: RabbitMQContainer, rabbitMQService = "rabbitmq"): this {
+    this.rabbitMQContainer = rabbitMQContainer;
+    this.rabbitMQService = rabbitMQService;
+    return this;
+  }
+
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withPubSub(options?: PubSubOptions): this {
+    this.pubSubEnabled = true;
+    this.pubSubOptions = options;
+    if (options?.rabbitMQContainer) {
+      this.rabbitMQContainer = options.rabbitMQContainer;
     }
     return this;
   }
