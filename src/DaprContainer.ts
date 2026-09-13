@@ -148,7 +148,7 @@ export class DaprContainer extends GenericContainer {
         // Attach explicitly supplied Redis container to the network and alias
         this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
       }
-      
+
       if (this.redisContainer) {
         startTasks.push(this.redisContainer.start());
       }
