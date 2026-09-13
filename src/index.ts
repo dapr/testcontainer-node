@@ -19,6 +19,7 @@ export * from "./DaprPlacementContainer";
 export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
 export * from "./HttpEndpoint";
+export * from "./JobsHarness";
 export * from "./MetadataEntry";
 export * from "./RedisContainer";
 export * from "./Subscription";
