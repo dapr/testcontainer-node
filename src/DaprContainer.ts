@@ -66,6 +66,15 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type StateManagementOptions = {
+  stateStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+  enableActorStateStore?: boolean;
+  keyPrefix?: string;
+};
+
 export class DaprContainer extends GenericContainer {
   private daprLogLevel = "info";
   private daprApiLogging = false;
@@ -86,6 +95,8 @@ export class DaprContainer extends GenericContainer {
   private shouldReuseRedis = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private stateManagementEnabled = false;
+  private stateManagementOptions?: StateManagementOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -134,10 +145,11 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer.start(),
     ];
 
-    if (this.workflowEnabled || this.redisContainer) {
+    if (this.workflowEnabled || this.stateManagementEnabled || this.redisContainer) {
       if (!this.redisContainer) {
         // Only auto-create Redis if no external host is configured
-        if (!this.workflowOptions?.redisHost) {
+        const externalHost = this.workflowOptions?.redisHost ?? this.stateManagementOptions?.redisHost;
+        if (!externalHost) {
           const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
           if (this.shouldReuseRedis) {
             container.withReuse().withAutoRemove(false);
@@ -228,6 +240,25 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.stateManagementEnabled) {
+      const stateStoreName =
+        this.stateManagementOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
+      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
+      if (!alreadyHasStateStore) {
+        const redisHost =
+          this.stateManagementOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisStateStore = RedisContainer.createStateStoreComponent({
+          name: stateStoreName,
+          redisHost,
+          redisPassword: this.stateManagementOptions?.redisPassword,
+          actorStateStore: this.stateManagementOptions?.enableActorStateStore ?? true,
+          keyPrefix: this.stateManagementOptions?.keyPrefix,
+        });
+        this.components.push(redisStateStore);
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -299,6 +330,14 @@ export class DaprContainer extends GenericContainer {
 
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isStateManagementEnabled(): boolean {
+    return this.stateManagementEnabled;
+  }
+
+  getStateManagementOptions(): StateManagementOptions | undefined {
+    return this.stateManagementOptions;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -421,6 +460,15 @@ export class DaprContainer extends GenericContainer {
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withStateManagement(options?: StateManagementOptions): this {
+    this.stateManagementEnabled = true;
+    this.stateManagementOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }
