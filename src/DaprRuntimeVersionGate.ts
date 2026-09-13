@@ -112,7 +112,7 @@ export class DaprRuntimeVersionGate {
     const withoutPrerelease = withoutMetadata.split("-")[0];
     const parts = withoutPrerelease.split(".").filter((p) => p.length > 0);
 
-    if (parts.length < 2) {
+    if (parts.length !== 2 && parts.length !== 3) {
       return null;
     }
 
@@ -124,7 +124,7 @@ export class DaprRuntimeVersionGate {
     const minor = parseInt(parts[1], 10);
 
     let patch = 0;
-    if (parts.length >= 3) {
+    if (parts.length === 3) {
       if (!/^\d+$/.test(parts[2])) {
         return null;
       }

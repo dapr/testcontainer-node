@@ -16,6 +16,7 @@ export * from "./Configuration";
 export * from "./Constants";
 export * from "./DaprContainer";
 export * from "./DaprPlacementContainer";
+export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
 export * from "./HttpEndpoint";
 export * from "./MetadataEntry";

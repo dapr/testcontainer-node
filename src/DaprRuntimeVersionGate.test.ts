@@ -109,6 +109,7 @@ describe("DaprRuntimeVersionGate", () => {
       expect(DaprRuntimeVersionGate.tryParseVersion("latest")).toBeNull();
       expect(DaprRuntimeVersionGate.tryParseVersion("abc")).toBeNull();
       expect(DaprRuntimeVersionGate.tryParseVersion("1")).toBeNull();
+      expect(DaprRuntimeVersionGate.tryParseVersion("1.18.0.1")).toBeNull();
       expect(DaprRuntimeVersionGate.tryParseVersion("1.x")).toBeNull();
       expect(DaprRuntimeVersionGate.tryParseVersion("1.18.x")).toBeNull();
       expect(DaprRuntimeVersionGate.tryParseVersion("x.18.0")).toBeNull();
