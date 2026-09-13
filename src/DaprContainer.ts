@@ -136,13 +136,22 @@ export class DaprContainer extends GenericContainer {
 
     if (this.workflowEnabled || this.redisContainer) {
       if (!this.redisContainer) {
-        const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
-        if (this.shouldReuseRedis) {
-          container.withReuse().withAutoRemove(false);
+        // Only auto-create Redis if no external host is configured
+        if (!this.workflowOptions?.redisHost) {
+          const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+          if (this.shouldReuseRedis) {
+            container.withReuse().withAutoRemove(false);
+          }
+          this.redisContainer = container;
         }
-        this.redisContainer = container;
+      } else {
+        // Attach explicitly supplied Redis container to the network and alias
+        this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
       }
-      startTasks.push(this.redisContainer.start());
+      
+      if (this.redisContainer) {
+        startTasks.push(this.redisContainer.start());
+      }
     }
 
     const containers = await Promise.all(startTasks);

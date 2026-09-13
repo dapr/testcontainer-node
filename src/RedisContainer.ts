@@ -44,6 +44,7 @@ export class RedisContainer extends GenericContainer {
 
   public withPort(port: number): this {
     this.redisPort = port;
+    this.withExposedPorts(port);
     return this;
   }
 
