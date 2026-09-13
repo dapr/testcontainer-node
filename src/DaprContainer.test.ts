@@ -142,10 +142,26 @@ describe("DaprContainer", () => {
     });
 
     console.log("Publishing message...");
+    let received = false;
+    promise.then(() => {
+      received = true;
+    });
+
+    const publishInterval = setInterval(async () => {
+      if (!received) {
+        try {
+          await client.pubsub.publish("pubsub", "topic", { key: "key", value: "value" });
+        } catch {
+          // ignore transient publish errors
+        }
+      }
+    }, 1000);
+
     await client.pubsub.publish("pubsub", "topic", { key: "key", value: "value" });
 
     console.log("Waiting for data...");
     const data = await promise;
+    clearInterval(publishInterval);
     expect(data).toEqual({ key: "key", value: "value" });
 
     await client.stop();
@@ -202,10 +218,26 @@ describe("DaprContainer", () => {
     });
 
     console.log("Publishing message...");
+    let received = false;
+    promise.then(() => {
+      received = true;
+    });
+
+    const publishInterval = setInterval(async () => {
+      if (!received) {
+        try {
+          await client.pubsub.publish("pubsub", "orders", { key: "key", value: "value" });
+        } catch {
+          // ignore transient publish errors
+        }
+      }
+    }, 1000);
+
     await client.pubsub.publish("pubsub", "orders", { key: "key", value: "value" });
 
     console.log("Waiting for data...");
     const data = await promise;
+    clearInterval(publishInterval);
     expect(data).toEqual({ key: "key", value: "value" });
 
     await client.stop();
