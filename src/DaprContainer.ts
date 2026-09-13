@@ -25,19 +25,46 @@ import {
 } from "testcontainers";
 import { Component } from "./Component";
 import { Configuration } from "./Configuration";
+import {
+  DAPR_RUNTIME_VERSION_ENV_VAR,
+  DaprComponentNames,
+  DEFAULT_DAPR_VERSION,
+  getDaprPlacementImage,
+  getDaprRuntimeImage,
+  getDaprSchedulerImage,
+  getDaprVersion,
+} from "./Constants";
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
 import { Subscription } from "./Subscription";
 
-export const DAPR_VERSION = "1.16.4";
-export const DAPR_RUNTIME_IMAGE = `daprio/daprd:${DAPR_VERSION}`;
-export const DAPR_PLACEMENT_IMAGE = `daprio/placement:${DAPR_VERSION}`;
-export const DAPR_SCHEDULER_IMAGE = `daprio/scheduler:${DAPR_VERSION}`;
+export {
+  DAPR_RUNTIME_VERSION_ENV_VAR,
+  DaprComponentNames,
+  DEFAULT_DAPR_VERSION,
+  getDaprPlacementImage,
+  getDaprRuntimeImage,
+  getDaprSchedulerImage,
+  getDaprVersion,
+};
+
+export const DAPR_VERSION = DEFAULT_DAPR_VERSION;
+export const DAPR_RUNTIME_IMAGE = getDaprRuntimeImage();
+export const DAPR_PLACEMENT_IMAGE = getDaprPlacementImage();
+export const DAPR_SCHEDULER_IMAGE = getDaprSchedulerImage();
 
 export const DAPRD_DEFAULT_HTTP_PORT = 3500;
 export const DAPRD_DEFAULT_GRPC_PORT = 50001;
 export const DAPR_PROTOCOL = "http";
+
+export type WorkflowOptions = {
+  stateStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  enableActorStateStore?: boolean;
+};
 
 export class DaprContainer extends GenericContainer {
   private daprLogLevel = "info";
@@ -48,19 +75,24 @@ export class DaprContainer extends GenericContainer {
   private appHealthCheckPath?: string;
   private placementService = "placement";
   private schedulerService = "scheduler";
-  private placementImage = DAPR_PLACEMENT_IMAGE;
-  private schedulerImage = DAPR_SCHEDULER_IMAGE;
+  private redisService = "redis";
+  private placementImage = getDaprPlacementImage();
+  private schedulerImage = getDaprSchedulerImage();
   private placementContainer?: DaprPlacementContainer;
   private schedulerContainer?: DaprSchedulerContainer;
+  private redisContainer?: RedisContainer;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
+  private shouldReuseRedis = false;
+  private workflowEnabled = false;
+  private workflowOptions?: WorkflowOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
   private subscriptions: Subscription[] = [];
   private httpEndpoints: HttpEndpoint[] = [];
 
-  constructor(image = DAPR_RUNTIME_IMAGE) {
+  constructor(image: string = getDaprRuntimeImage()) {
     super(image);
     this.withExposedPorts(DAPRD_DEFAULT_HTTP_PORT, DAPRD_DEFAULT_GRPC_PORT)
       .withWaitStrategy(
@@ -96,7 +128,33 @@ export class DaprContainer extends GenericContainer {
       }
       this.schedulerContainer = container;
     }
-    const containers = await Promise.all([this.placementContainer.start(), this.schedulerContainer.start()]);
+
+    const startTasks: Promise<StartedTestContainer>[] = [
+      this.placementContainer.start(),
+      this.schedulerContainer.start(),
+    ];
+
+    if (this.workflowEnabled || this.redisContainer) {
+      if (!this.redisContainer) {
+        // Only auto-create Redis if no external host is configured
+        if (!this.workflowOptions?.redisHost) {
+          const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+          if (this.shouldReuseRedis) {
+            container.withReuse().withAutoRemove(false);
+          }
+          this.redisContainer = container;
+        }
+      } else {
+        // Attach explicitly supplied Redis container to the network and alias
+        this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+      }
+      
+      if (this.redisContainer) {
+        startTasks.push(this.redisContainer.start());
+      }
+    }
+
+    const containers = await Promise.all(startTasks);
     return new StartedDaprContainer(await super.start(), containers);
   }
 
@@ -154,13 +212,37 @@ export class DaprContainer extends GenericContainer {
       ]);
     }
 
-    if (!this.components.length) {
+    if (this.workflowEnabled) {
+      const stateStoreName = this.workflowOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
+      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
+      if (!alreadyHasStateStore) {
+        const redisHost =
+          this.workflowOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisStateStore = RedisContainer.createStateStoreComponent({
+          name: stateStoreName,
+          redisHost,
+          actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
+        });
+        this.components.push(redisStateStore);
+      }
+    }
+
+    const hasState = this.components.some((c) => c.type.startsWith("state."));
+    if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
+    }
+
+    const hasPubsub = this.components.some((c) => c.type.startsWith("pubsub."));
+    if (!hasPubsub) {
       this.components.push(new Component("pubsub", "pubsub.in-memory", "v1", []));
     }
 
-    if (!this.subscriptions.length && this.components.length) {
-      this.subscriptions.push(new Subscription("local", "pubsub", "topic", undefined, "/events"));
+    if (!this.subscriptions.length) {
+      const pubsubComponent = this.components.find((c) => c.type.startsWith("pubsub."));
+      if (pubsubComponent) {
+        this.subscriptions.push(new Subscription("local", pubsubComponent.name, "topic", undefined, "/events"));
+      }
     }
 
     for (const component of this.components) {
@@ -201,6 +283,22 @@ export class DaprContainer extends GenericContainer {
 
   getPlacementService(): string {
     return this.placementService;
+  }
+
+  getSchedulerService(): string {
+    return this.schedulerService;
+  }
+
+  getRedisService(): string {
+    return this.redisService;
+  }
+
+  getRedisContainer(): RedisContainer | undefined {
+    return this.redisContainer;
+  }
+
+  isWorkflowEnabled(): boolean {
+    return this.workflowEnabled;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -249,6 +347,11 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withRedisService(redisService: string): this {
+    this.redisService = redisService;
+    return this;
+  }
+
   withAppName(appName: string): this {
     this.appName = appName;
     return this;
@@ -294,6 +397,11 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withReusableRedis(shouldReuseRedis: boolean): this {
+    this.shouldReuseRedis = shouldReuseRedis;
+    return this;
+  }
+
   withPlacementContainer(placementContainer: DaprPlacementContainer): this {
     this.placementContainer = placementContainer;
     return this;
@@ -301,6 +409,21 @@ export class DaprContainer extends GenericContainer {
 
   withSchedulerContainer(schedulerContainer: DaprSchedulerContainer): this {
     this.schedulerContainer = schedulerContainer;
+    return this;
+  }
+
+  withRedisContainer(redisContainer: RedisContainer, redisService = "redis"): this {
+    this.redisContainer = redisContainer;
+    this.redisService = redisService;
+    return this;
+  }
+
+  withWorkflow(options?: WorkflowOptions): this {
+    this.workflowEnabled = true;
+    this.workflowOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
     return this;
   }
 
@@ -353,5 +476,9 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getGrpcEndpoint(): string {
     return `:${this.getMappedPort(DAPRD_DEFAULT_GRPC_PORT)}`;
+  }
+
+  getContainers(): StartedTestContainer[] {
+    return this.containers.slice();
   }
 }
