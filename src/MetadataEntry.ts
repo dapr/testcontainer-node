@@ -1,5 +1,5 @@
-/*
-Copyright 2025 The Dapr Authors
+﻿/*
+Copyright 2026 The Dapr Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,14 +11,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-export * from "./Component";
-export * from "./Configuration";
-export * from "./Constants";
-export * from "./DaprContainer";
-export * from "./DaprPlacementContainer";
-export * from "./DaprSchedulerContainer";
-export * from "./HttpEndpoint";
-export * from "./MetadataEntry";
-export * from "./RedisContainer";
-export * from "./Subscription";
-export * from "./WorkflowHarness";
+/**
+ * Provides the name and value for a metadata record in a component.
+ */
+export class MetadataEntry {
+  constructor(
+    public readonly name: string,
+    public readonly value: string
+  ) {}
+}
