@@ -44,6 +44,7 @@ const harness = new StateManagementHarness();
 await harness.start();
 
 const client = harness.createDaprClient();
+await client.start();
 const storeName = harness.getStateStoreName();
 
 // Save and retrieve state
