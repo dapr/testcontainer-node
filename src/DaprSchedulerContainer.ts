@@ -15,11 +15,16 @@ import { GenericContainer, Wait } from "testcontainers";
 import { getDaprSchedulerImage } from "./Constants";
 
 export class DaprSchedulerContainer extends GenericContainer {
+  private static readonly healthPort = 8080;
   private schedulerPort = 51005;
 
   constructor(image: string = getDaprSchedulerImage()) {
     super(image);
-    this.withWaitStrategy(Wait.forLogMessage(/Dapr Scheduler listening/)).withStartupTimeout(120_000);
+    this.withWaitStrategy(
+      Wait.forHttp("/healthz", DaprSchedulerContainer.healthPort).forStatusCodeMatching(
+        (statusCode) => statusCode === 200
+      )
+    ).withStartupTimeout(120_000);
   }
 
   protected async beforeContainerCreated(): Promise<void> {
@@ -27,7 +32,7 @@ export class DaprSchedulerContainer extends GenericContainer {
       { content: "", target: "./default-dapr-scheduler-server-0/dapr-0.1/", mode: 0o777 },
       { content: "", target: "./dapr-scheduler-existing-cluster/", mode: 0o777 },
     ]);
-    this.withExposedPorts(this.schedulerPort);
+    this.withExposedPorts(this.schedulerPort, DaprSchedulerContainer.healthPort);
     this.withCommand(["./scheduler", "--port", this.schedulerPort.toString(), "--etcd-data-dir", "."]);
   }
 
