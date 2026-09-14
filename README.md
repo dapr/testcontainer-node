@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts) and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/CryptographyHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/CryptographyHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
 
 ## Using the library
 
@@ -52,6 +52,31 @@ await runtime.start();
 const client = harness.createWorkflowClient();
 const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
 const state = await client.waitForWorkflowCompletion(instanceId);
+
+await harness.stop();
+```
+
+## Dapr Cryptography Testing
+
+`CryptographyHarness` configures the `crypto.dapr.localstorage` component and copies a local directory containing PEM, JWK, or raw symmetric keys into the Dapr sidecar:
+
+```typescript
+import { CryptographyHarness } from "@dapr/testcontainer-node";
+
+const harness = new CryptographyHarness({
+  keyPath: "./keys",
+});
+await harness.start();
+
+const client = harness.createDaprClient();
+const encrypted = await client.crypto.encrypt("secret data", {
+  componentName: harness.getComponentName(),
+  keyName: "rsa-key.pem",
+  keyWrapAlgorithm: "RSA-OAEP-256",
+});
+const decrypted = await client.crypto.decrypt(encrypted, {
+  componentName: harness.getComponentName(),
+});
 
 await harness.stop();
 ```
