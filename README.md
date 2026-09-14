@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts) and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
 
 ## Using the library
 
@@ -31,6 +31,27 @@ You can also specify a custom image when instantiating containers:
 import { DaprContainer, getDaprRuntimeImage } from "@dapr/testcontainer-node";
 
 const dapr = new DaprContainer(getDaprRuntimeImage("1.18.4"));
+```
+
+## Dapr State Management Testing
+
+You can use `StateManagementHarness` or `.withStateManagement()` on `DaprContainer` to test Dapr State Management backed by the Redis container:
+
+```typescript
+import { StateManagementHarness } from "@dapr/testcontainer-node";
+
+const harness = new StateManagementHarness();
+await harness.start();
+
+const client = harness.createDaprClient();
+await client.start();
+const storeName = harness.getStateStoreName();
+
+// Save and retrieve state
+await client.state.save(storeName, [{ key: "my-key", value: { name: "Alice" } }]);
+const state = await client.state.get(storeName, "my-key");
+
+await harness.stop();
 ```
 
 ## Dapr Workflow Testing

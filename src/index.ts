@@ -21,5 +21,6 @@ export * from "./DaprSchedulerContainer";
 export * from "./HttpEndpoint";
 export * from "./MetadataEntry";
 export * from "./RedisContainer";
+export * from "./StateManagementHarness";
 export * from "./Subscription";
 export * from "./WorkflowHarness";

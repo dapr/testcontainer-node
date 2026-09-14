@@ -13,6 +13,7 @@ limitations under the License.
 
 import assert from "node:assert";
 import fs from "node:fs";
+import YAML from "yaml";
 import {
   AbstractStartedContainer,
   GenericContainer,
@@ -66,7 +67,29 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type StateManagementOptions = {
+  stateStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+  enableActorStateStore?: boolean;
+  keyPrefix?: string;
+};
+
 export class DaprContainer extends GenericContainer {
+  private static readonly REDACTED_VALUE = "[REDACTED]";
+  private static readonly SENSITIVE_KEYS = new Set([
+    "password",
+    "redispassword",
+    "secret",
+    "secretkey",
+    "token",
+    "apikey",
+    "clientsecret",
+    "accesskey",
+    "accesstoken",
+  ]);
+
   private daprLogLevel = "info";
   private daprApiLogging = false;
   private appName = "dapr-app";
@@ -86,6 +109,8 @@ export class DaprContainer extends GenericContainer {
   private shouldReuseRedis = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private stateManagementEnabled = false;
+  private stateManagementOptions?: StateManagementOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -106,6 +131,35 @@ export class DaprContainer extends GenericContainer {
   public withNetwork(network: StartedNetwork): this {
     this.startedNetwork = network;
     return super.withNetwork(network);
+  }
+
+  private static redactSecretValues<T>(value: T): T {
+    if (Array.isArray(value)) {
+      return value.map((entry) => DaprContainer.redactSecretValues(entry)) as T;
+    }
+
+    if (value !== null && typeof value === "object") {
+      const redacted: Record<string, unknown> = {};
+      for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+        if (DaprContainer.SENSITIVE_KEYS.has(key.toLowerCase())) {
+          redacted[key] = DaprContainer.REDACTED_VALUE;
+        } else {
+          redacted[key] = DaprContainer.redactSecretValues(childValue);
+        }
+      }
+      return redacted as T;
+    }
+
+    return value;
+  }
+
+  private static redactYaml(yamlText: string): string {
+    try {
+      const parsed = YAML.parse(yamlText);
+      return YAML.stringify(DaprContainer.redactSecretValues(parsed), { indentSeq: false });
+    } catch {
+      return yamlText;
+    }
   }
 
   public override async start(): Promise<StartedDaprContainer> {
@@ -134,17 +188,18 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer.start(),
     ];
 
-    if (this.workflowEnabled || this.redisContainer) {
-      if (!this.redisContainer) {
-        // Only auto-create Redis if no external host is configured
-        if (!this.workflowOptions?.redisHost) {
-          const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
-          if (this.shouldReuseRedis) {
-            container.withReuse().withAutoRemove(false);
-          }
-          this.redisContainer = container;
+    const needsSharedRedis =
+      (this.workflowEnabled && !this.workflowOptions?.redisHost) ||
+      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost);
+
+    if (this.redisContainer || needsSharedRedis) {
+      if (!this.redisContainer && needsSharedRedis) {
+        const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+        if (this.shouldReuseRedis) {
+          container.withReuse().withAutoRemove(false);
         }
-      } else {
+        this.redisContainer = container;
+      } else if (this.redisContainer) {
         // Attach explicitly supplied Redis container to the network and alias
         this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
       }
@@ -206,7 +261,7 @@ export class DaprContainer extends GenericContainer {
     if (this.configuration) {
       const configurationYaml = this.configuration.toYaml();
       log.info("> Configuration YAML: \n");
-      log.info(`\t\n${configurationYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(configurationYaml)}\n`);
       this.withCopyContentToContainer([
         { content: configurationYaml, target: `/dapr-resources/${this.configuration.name}.yaml` },
       ]);
@@ -223,6 +278,25 @@ export class DaprContainer extends GenericContainer {
           name: stateStoreName,
           redisHost,
           actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
+        });
+        this.components.push(redisStateStore);
+      }
+    }
+
+    if (this.stateManagementEnabled) {
+      const stateStoreName =
+        this.stateManagementOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
+      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
+      if (!alreadyHasStateStore) {
+        const redisHost =
+          this.stateManagementOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisStateStore = RedisContainer.createStateStoreComponent({
+          name: stateStoreName,
+          redisHost,
+          redisPassword: this.stateManagementOptions?.redisPassword,
+          actorStateStore: this.stateManagementOptions?.enableActorStateStore ?? true,
+          keyPrefix: this.stateManagementOptions?.keyPrefix,
         });
         this.components.push(redisStateStore);
       }
@@ -248,14 +322,14 @@ export class DaprContainer extends GenericContainer {
     for (const component of this.components) {
       const componentYaml = component.toYaml();
       log.info("> Component YAML: \n");
-      log.info(`\t\n${componentYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(componentYaml)}\n`);
       this.withCopyContentToContainer([{ content: componentYaml, target: `/dapr-resources/${component.name}.yaml` }]);
     }
 
     for (const subscription of this.subscriptions) {
       const subscriptionYaml = subscription.toYaml();
       log.info("> Subscription YAML: \n");
-      log.info(`\t\n${subscriptionYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(subscriptionYaml)}\n`);
       this.withCopyContentToContainer([
         { content: subscriptionYaml, target: `/dapr-resources/${subscription.name}.yaml` },
       ]);
@@ -264,7 +338,7 @@ export class DaprContainer extends GenericContainer {
     for (const endpoint of this.httpEndpoints) {
       const endpointYaml = endpoint.toYaml();
       log.info("> HTTPEndpoint YAML: \n");
-      log.info(`\t\n${endpointYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(endpointYaml)}\n`);
       this.withCopyContentToContainer([{ content: endpointYaml, target: `/dapr-resources/${endpoint.name}.yaml` }]);
     }
   }
@@ -299,6 +373,14 @@ export class DaprContainer extends GenericContainer {
 
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isStateManagementEnabled(): boolean {
+    return this.stateManagementEnabled;
+  }
+
+  getStateManagementOptions(): StateManagementOptions | undefined {
+    return this.stateManagementOptions;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -421,6 +503,15 @@ export class DaprContainer extends GenericContainer {
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withStateManagement(options?: StateManagementOptions): this {
+    this.stateManagementEnabled = true;
+    this.stateManagementOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }
