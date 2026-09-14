@@ -63,6 +63,16 @@ describe("DaprContainer", () => {
     expect(startedContainer.getGrpcEndpoint()).toBeDefined();
   }, 60_000);
 
+  it("should start a shared Redis container when workflow and state management are both enabled", async () => {
+    await using network = await new Network().start();
+    const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE).withNetwork(network).withWorkflow().withStateManagement();
+
+    await using startedContainer = await dapr.start();
+
+    expect(dapr.getRedisContainer()).toBeDefined();
+    expect(startedContainer.getContainers()).toHaveLength(3);
+  }, 60_000);
+
   it("should initialize DaprClient", async () => {
     await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
