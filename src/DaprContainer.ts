@@ -600,7 +600,11 @@ export class DaprContainer extends GenericContainer {
     this.workflowEnabled = true;
     this.workflowOptions = options;
     this.withWaitStrategy(
-      Wait.forAll([DaprContainer.outboundHealthWaitStrategy(), Wait.forLogMessage(/Workflow engine started/i)])
+      Wait.forAll([
+        DaprContainer.outboundHealthWaitStrategy(),
+        Wait.forLogMessage(/Workflow engine started/i),
+        Wait.forLogMessage(/Scheduler clients initialized/i),
+      ])
     );
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;

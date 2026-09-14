@@ -21,9 +21,12 @@ export class DaprSchedulerContainer extends GenericContainer {
   constructor(image: string = getDaprSchedulerImage()) {
     super(image);
     this.withWaitStrategy(
-      Wait.forHttp("/healthz", DaprSchedulerContainer.healthPort).forStatusCodeMatching(
-        (statusCode) => statusCode === 200
-      )
+      Wait.forAll([
+        Wait.forHttp("/healthz", DaprSchedulerContainer.healthPort).forStatusCodeMatching(
+          (statusCode) => statusCode === 200
+        ),
+        Wait.forLogMessage(/Cron is ready/i),
+      ])
     ).withStartupTimeout(120_000);
   }
 
