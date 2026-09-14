@@ -30,6 +30,8 @@ const helloWorkflow: TWorkflow = async function* (
   return result;
 };
 
+const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 2_000));
+
 describe("WorkflowHarness and Workflow Support", () => {
   it("should configure DaprContainer with workflow and redis state store", () => {
     const dapr = new DaprContainer().withWorkflow({
@@ -81,6 +83,8 @@ describe("WorkflowHarness and Workflow Support", () => {
       runtime.registerWorkflow(helloWorkflow);
       runtime.registerActivity(helloActivity);
       await runtime.start();
+      // WorkflowRuntime starts its gRPC worker in the background.
+      await waitForWorkflowWorker();
 
       const client = harness.createWorkflowClient();
       const instanceId = await client.scheduleNewWorkflow(helloWorkflow, "World");
@@ -113,6 +117,8 @@ describe("WorkflowHarness and Workflow Support", () => {
     runtime.registerWorkflow(helloWorkflow);
     runtime.registerActivity(helloActivity);
     await runtime.start();
+    // WorkflowRuntime starts its gRPC worker in the background.
+    await waitForWorkflowWorker();
 
     const client = new (await import("@dapr/dapr")).DaprWorkflowClient({
       daprHost: startedContainer.getHost(),
