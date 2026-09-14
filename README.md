@@ -117,6 +117,38 @@ await harness.getBulkSecrets();
 await harness.stop();
 ```
 
+## Dapr Distributed Lock Testing
+
+You can use `DistributedLockHarness` or `.withDistributedLock()` on `DaprContainer` to test Dapr Distributed Locks with an automated Redis lock store:
+
+```typescript
+import { DistributedLockHarness } from "@dapr/testcontainer-node";
+import { LockStatus } from "@dapr/dapr";
+
+const harness = new DistributedLockHarness();
+await harness.start();
+
+const client = harness.createDaprClient();
+await client.start();
+
+const lockResponse = await client.lock.lock(
+  DistributedLockHarness.DistributedLockComponentName,
+  "resource-id",
+  "owner-id",
+  10
+);
+console.log(lockResponse.success);
+
+const unlockResponse = await client.lock.unlock(
+  DistributedLockHarness.DistributedLockComponentName,
+  "resource-id",
+  "owner-id"
+);
+console.log(unlockResponse.status === LockStatus.Success);
+
+await harness.stop();
+```
+
 Secrets can also be loaded from an existing JSON file on the host, and the nested separator is configurable:
 
 ```typescript

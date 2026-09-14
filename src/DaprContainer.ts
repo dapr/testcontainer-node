@@ -93,6 +93,13 @@ export type StateManagementOptions = {
   keyPrefix?: string;
 };
 
+export type DistributedLockOptions = {
+  lockStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+};
+
 export class DaprContainer extends GenericContainer {
   private static readonly REDACTED_VALUE = "[REDACTED]";
   private static readonly SENSITIVE_KEYS = new Set([
@@ -133,6 +140,8 @@ export class DaprContainer extends GenericContainer {
   private pubSubOptions?: PubSubOptions;
   private stateManagementEnabled = false;
   private stateManagementOptions?: StateManagementOptions;
+  private distributedLockEnabled = false;
+  private distributedLockOptions?: DistributedLockOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -215,7 +224,8 @@ export class DaprContainer extends GenericContainer {
 
     const needsSharedRedis =
       (this.workflowEnabled && !this.workflowOptions?.redisHost) ||
-      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost);
+      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost) ||
+      (this.distributedLockEnabled && !this.distributedLockOptions?.redisHost);
 
     if (this.redisContainer || needsSharedRedis) {
       if (!this.redisContainer && needsSharedRedis) {
@@ -230,6 +240,9 @@ export class DaprContainer extends GenericContainer {
       }
 
       if (this.redisContainer) {
+        if (this.distributedLockEnabled && this.distributedLockOptions?.redisPassword !== undefined) {
+          this.redisContainer.withPassword(this.distributedLockOptions.redisPassword);
+        }
         startTasks.push(this.redisContainer.start());
       }
     }
@@ -256,8 +269,28 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
-    const containers = await Promise.all(startTasks);
-    return new StartedDaprContainer(await super.start(), containers);
+    const startedContainers = await Promise.allSettled(startTasks);
+    const failedStart = startedContainers.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    if (failedStart) {
+      await Promise.allSettled(
+        startedContainers
+          .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
+          .map((result) => result.value.stop())
+      );
+      throw failedStart.reason;
+    }
+
+    const containers = startedContainers
+      .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
+      .map((result) => result.value);
+    try {
+      return new StartedDaprContainer(await super.start(), containers);
+    } catch (error) {
+      await Promise.allSettled(containers.map((container) => container.stop()));
+      throw error;
+    }
   }
 
   protected override async beforeContainerCreated(): Promise<void> {
@@ -368,6 +401,23 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.distributedLockEnabled) {
+      const lockStoreName =
+        this.distributedLockOptions?.lockStoreName ?? DaprComponentNames.DistributedLockComponentName;
+      const alreadyHasLockStore = this.components.some((c) => c.name === lockStoreName);
+      if (!alreadyHasLockStore) {
+        const redisHost =
+          this.distributedLockOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisLock = RedisContainer.createDistributedLockComponent({
+          name: lockStoreName,
+          redisHost,
+          redisPassword: this.distributedLockOptions?.redisPassword,
+        });
+        this.components.push(redisLock);
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -471,6 +521,10 @@ export class DaprContainer extends GenericContainer {
 
   getStateManagementOptions(): StateManagementOptions | undefined {
     return this.stateManagementOptions;
+  }
+
+  isDistributedLockEnabled(): boolean {
+    return this.distributedLockEnabled;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -634,6 +688,15 @@ export class DaprContainer extends GenericContainer {
   withStateManagement(options?: StateManagementOptions): this {
     this.stateManagementEnabled = true;
     this.stateManagementOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withDistributedLock(options?: DistributedLockOptions): this {
+    this.distributedLockEnabled = true;
+    this.distributedLockOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }

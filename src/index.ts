@@ -18,6 +18,7 @@ export * from "./DaprContainer";
 export * from "./DaprPlacementContainer";
 export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
+export * from "./DistributedLockHarness";
 export * from "./HttpEndpoint";
 export * from "./MetadataEntry";
 export * from "./PubSubHarness";

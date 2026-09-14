@@ -48,6 +48,11 @@ export class RedisContainer extends GenericContainer {
     return this;
   }
 
+  public withPassword(password: string): this {
+    this.withCommand(["redis-server", "--requirepass", password]);
+    return this;
+  }
+
   public getPort(): number {
     return this.redisPort;
   }
