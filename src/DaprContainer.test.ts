@@ -65,10 +65,7 @@ describe("DaprContainer", () => {
 
   it("should start a shared Redis container when workflow and state management are both enabled", async () => {
     await using network = await new Network().start();
-    const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)
-      .withNetwork(network)
-      .withWorkflow()
-      .withStateManagement();
+    const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE).withNetwork(network).withWorkflow().withStateManagement();
 
     await using startedContainer = await dapr.start();
 
