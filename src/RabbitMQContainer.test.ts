@@ -26,8 +26,8 @@ describe("RabbitMQContainer", () => {
   it("should have correct defaults", () => {
     expect(RABBITMQ_DEFAULT_IMAGE).toBe("rabbitmq:alpine");
     expect(RABBITMQ_DEFAULT_PORT).toBe(5672);
-    expect(RABBITMQ_DEFAULT_USER).toBe("guest");
-    expect(RABBITMQ_DEFAULT_PASSWORD).toBe("guest");
+    expect(RABBITMQ_DEFAULT_USER).toBe("admin");
+    expect(RABBITMQ_DEFAULT_PASSWORD).toBe("admin");
 
     const container = new RabbitMQContainer();
     expect(container.getPort()).toBe(RABBITMQ_DEFAULT_PORT);
@@ -58,10 +58,18 @@ describe("RabbitMQContainer", () => {
     expect(metadata).toEqual([
       { name: "protocol", value: "amqp" },
       { name: "hostname", value: `localhost:${RABBITMQ_DEFAULT_PORT}` },
-      { name: "username", value: "guest" },
-      { name: "password", value: "guest" },
+      { name: "username", value: "admin" },
+      { name: "password", value: "admin" },
       { name: "requeueInFailure", value: "true" },
     ]);
+  });
+
+  it("should inherit custom credentials from the container", () => {
+    const container = new RabbitMQContainer().withUsername("custom-user").withPassword("pa:ss/word%25");
+    const component = container.createPubSubComponent();
+
+    expect(component.getMetadata()).toContainEqual({ name: "username", value: "custom-user" });
+    expect(component.getMetadata()).toContainEqual({ name: "password", value: "pa:ss/word%25" });
   });
 
   it("should create pubsub component with custom options", () => {
@@ -94,15 +102,17 @@ describe("RabbitMQContainer", () => {
   });
 
   it("should start and stop a RabbitMQ container standalone", async () => {
-    const container = new RabbitMQContainer();
+    const username = "user@name";
+    const password = "pa:ss/word%25";
+    const container = new RabbitMQContainer().withUsername(username).withPassword(password);
     await using started = await container.start();
 
     expect(started.getRabbitMQPort()).toBeGreaterThan(0);
     expect(started.getRabbitMQHost()).toBeDefined();
-    expect(started.getUsername()).toBe("guest");
-    expect(started.getPassword()).toBe("guest");
+    expect(started.getUsername()).toBe(username);
+    expect(started.getPassword()).toBe(password);
     expect(started.getConnectionString()).toBe(
-      `amqp://guest:guest@${started.getRabbitMQHost()}:${started.getRabbitMQPort()}`
+      `amqp://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${started.getRabbitMQHost()}:${started.getRabbitMQPort()}`
     );
   }, 120_000);
 });

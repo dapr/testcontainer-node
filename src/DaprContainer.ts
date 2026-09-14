@@ -37,7 +37,12 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
-import { RABBITMQ_DEFAULT_PORT, RabbitMQContainer } from "./RabbitMQContainer";
+import {
+  RABBITMQ_DEFAULT_PASSWORD,
+  RABBITMQ_DEFAULT_PORT,
+  RABBITMQ_DEFAULT_USER,
+  RabbitMQContainer,
+} from "./RabbitMQContainer";
 import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
 import { Subscription } from "./Subscription";
 
@@ -276,8 +281,8 @@ export class DaprContainer extends GenericContainer {
         const rabbitMQPubSub = RabbitMQContainer.createPubSubComponent({
           name: pubsubName,
           hostname,
-          username: this.pubSubOptions?.username,
-          password: this.pubSubOptions?.password,
+          username: this.pubSubOptions?.username ?? this.rabbitMQContainer?.getUsername() ?? RABBITMQ_DEFAULT_USER,
+          password: this.pubSubOptions?.password ?? this.rabbitMQContainer?.getPassword() ?? RABBITMQ_DEFAULT_PASSWORD,
           protocol: this.pubSubOptions?.protocol,
           requeueInFailure: this.pubSubOptions?.requeueInFailure,
         });

@@ -17,8 +17,8 @@ import { DaprComponentNames } from "./Constants";
 
 export const RABBITMQ_DEFAULT_IMAGE = "rabbitmq:alpine";
 export const RABBITMQ_DEFAULT_PORT = 5672;
-export const RABBITMQ_DEFAULT_USER = "guest";
-export const RABBITMQ_DEFAULT_PASSWORD = "guest";
+export const RABBITMQ_DEFAULT_USER = "admin";
+export const RABBITMQ_DEFAULT_PASSWORD = "admin";
 
 export type RabbitMQPubSubOptions = {
   name?: string;
@@ -41,7 +41,11 @@ export class RabbitMQContainer extends GenericContainer {
 
   constructor(image: string = RABBITMQ_DEFAULT_IMAGE) {
     super(image);
-    this.withExposedPorts(this.rabbitMQPort)
+    this.withEnvironment({
+      RABBITMQ_DEFAULT_USER: this.username,
+      RABBITMQ_DEFAULT_PASS: this.password,
+    })
+      .withExposedPorts(this.rabbitMQPort)
       .withWaitStrategy(Wait.forLogMessage(/Server startup complete/i))
       .withStartupTimeout(120_000);
   }
@@ -58,7 +62,10 @@ export class RabbitMQContainer extends GenericContainer {
 
   public withUsername(username: string): this {
     this.username = username;
-    this.withEnvironment({ RABBITMQ_DEFAULT_USER: username });
+    this.withEnvironment({
+      RABBITMQ_DEFAULT_USER: username,
+      RABBITMQ_DEFAULT_PASS: this.password,
+    });
     return this;
   }
 
@@ -68,7 +75,10 @@ export class RabbitMQContainer extends GenericContainer {
 
   public withPassword(password: string): this {
     this.password = password;
-    this.withEnvironment({ RABBITMQ_DEFAULT_PASS: password });
+    this.withEnvironment({
+      RABBITMQ_DEFAULT_USER: this.username,
+      RABBITMQ_DEFAULT_PASS: password,
+    });
     return this;
   }
 
@@ -164,7 +174,9 @@ export class StartedRabbitMQContainer extends AbstractStartedContainer {
   }
 
   public getConnectionString(): string {
-    return `amqp://${this.username}:${this.password}@${this.getRabbitMQHost()}:${this.getRabbitMQPort()}`;
+    const encodedUsername = encodeURIComponent(this.username);
+    const encodedPassword = encodeURIComponent(this.password);
+    return `amqp://${encodedUsername}:${encodedPassword}@${this.getRabbitMQHost()}:${this.getRabbitMQPort()}`;
   }
 }
 
