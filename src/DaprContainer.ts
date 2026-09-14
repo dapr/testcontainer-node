@@ -143,29 +143,50 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer.start(),
     ];
 
-    if (this.workflowEnabled || this.distributedLockEnabled || this.redisContainer) {
+    const workflowNeedsRedis = this.workflowEnabled && !this.workflowOptions?.redisHost;
+    const distributedLockNeedsRedis = this.distributedLockEnabled && !this.distributedLockOptions?.redisHost;
+    if (workflowNeedsRedis || distributedLockNeedsRedis || this.redisContainer) {
       if (!this.redisContainer) {
-        // Only auto-create Redis if no external host is configured
-        const hasExternalHost = this.workflowOptions?.redisHost || this.distributedLockOptions?.redisHost;
-        if (!hasExternalHost) {
-          const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
-          if (this.shouldReuseRedis) {
-            container.withReuse().withAutoRemove(false);
-          }
-          this.redisContainer = container;
+        const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+        if (this.shouldReuseRedis) {
+          container.withReuse().withAutoRemove(false);
         }
+        this.redisContainer = container;
       } else {
         // Attach explicitly supplied Redis container to the network and alias
         this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
       }
 
       if (this.redisContainer) {
+        if (distributedLockNeedsRedis && this.distributedLockOptions?.redisPassword !== undefined) {
+          this.redisContainer.withPassword(this.distributedLockOptions.redisPassword);
+        }
         startTasks.push(this.redisContainer.start());
       }
     }
 
-    const containers = await Promise.all(startTasks);
-    return new StartedDaprContainer(await super.start(), containers);
+    const startedContainers = await Promise.allSettled(startTasks);
+    const failedStart = startedContainers.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    if (failedStart) {
+      await Promise.allSettled(
+        startedContainers
+          .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
+          .map((result) => result.value.stop())
+      );
+      throw failedStart.reason;
+    }
+
+    const containers = startedContainers
+      .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
+      .map((result) => result.value);
+    try {
+      return new StartedDaprContainer(await super.start(), containers);
+    } catch (error) {
+      await Promise.allSettled(containers.map((container) => container.stop()));
+      throw error;
+    }
   }
 
   protected override async beforeContainerCreated(): Promise<void> {

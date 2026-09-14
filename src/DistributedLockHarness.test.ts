@@ -271,7 +271,6 @@ describe("DistributedLockHarness and Distributed Lock Support", () => {
 
         const client = harness.createDaprClient({
           communicationProtocol: CommunicationProtocolEnum.GRPC,
-          daprPort: harness.getGrpcPort().toString(),
         });
         await client.start();
 

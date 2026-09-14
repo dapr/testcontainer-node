@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { DaprClient, DaprClientOptions } from "@dapr/dapr";
+import { CommunicationProtocolEnum, DaprClient, DaprClientOptions } from "@dapr/dapr";
 import { LockStatus, UnlockResponse } from "@dapr/dapr/types/lock/UnlockResponse";
 import { LockResponse } from "@dapr/dapr/types/lock/LockResponse";
 import { Network, StartedNetwork } from "testcontainers";
@@ -75,17 +75,26 @@ export class DistributedLockHarness {
   }
 
   public async start(): Promise<this> {
-    if (this.options.network) {
-      this.network = this.options.network;
-      this.ownsNetwork = false;
-    } else {
-      this.network = await new Network().start();
-      this.ownsNetwork = true;
-    }
+    try {
+      if (this.options.network) {
+        this.network = this.options.network;
+        this.ownsNetwork = false;
+      } else {
+        this.network = await new Network().start();
+        this.ownsNetwork = true;
+      }
 
-    this.daprContainer.withNetwork(this.network);
-    this.startedDaprContainer = await this.daprContainer.start();
-    return this;
+      this.daprContainer.withNetwork(this.network);
+      this.startedDaprContainer = await this.daprContainer.start();
+      return this;
+    } catch (error) {
+      if (this.ownsNetwork && this.network) {
+        await this.network.stop();
+        this.network = undefined;
+        this.ownsNetwork = false;
+      }
+      throw error;
+    }
   }
 
   public async stop(): Promise<void> {
@@ -105,6 +114,7 @@ export class DistributedLockHarness {
     if (this.ownsNetwork && this.network) {
       await this.network.stop();
       this.network = undefined;
+      this.ownsNetwork = false;
     }
   }
 
@@ -137,10 +147,15 @@ export class DistributedLockHarness {
 
   public createDaprClient(clientOptions?: Partial<DaprClientOptions>): DaprClient {
     const started = this.getStartedDaprContainer();
+    const daprPort =
+      clientOptions?.daprPort ??
+      (clientOptions?.communicationProtocol === CommunicationProtocolEnum.GRPC
+        ? started.getGrpcPort().toString()
+        : started.getHttpPort().toString());
     const client = new DaprClient({
       daprHost: started.getHost(),
-      daprPort: started.getHttpPort().toString(),
       ...clientOptions,
+      daprPort,
     });
     this.daprClients.push(client);
     return client;
