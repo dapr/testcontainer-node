@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-Usage examples can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+Usage examples can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/SecretStoreHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/SecretStoreHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
 
 ## Using the library
 
@@ -91,6 +91,51 @@ const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
 const state = await client.waitForWorkflowCompletion(instanceId);
 
 await harness.stop();
+```
+
+## Dapr Secrets Testing
+
+You can use `SecretStoreHarness` or `.withSecretStore()` on `DaprContainer` to test the Dapr Secrets building block using a
+local file secret store (`secretstores.local.file`). The harness writes both the component YAML and its backing JSON
+secrets file into the container:
+
+```typescript
+import { SecretStoreHarness } from "@dapr/testcontainer-node";
+
+const harness = new SecretStoreHarness({
+  secrets: {
+    secret1: "value1",
+    connection: { username: "admin", password: "s3cr3t" },
+  },
+});
+await harness.start();
+
+await harness.getSecretValue("secret1"); // "value1"
+await harness.getSecretValue("connection:username"); // "admin" (nested keys are flattened)
+await harness.getBulkSecrets();
+
+await harness.stop();
+```
+
+Secrets can also be loaded from an existing JSON file on the host, and the nested separator is configurable:
+
+```typescript
+const harness = new SecretStoreHarness({
+  secretStoreName: "my-secrets",
+  secretsFilePath: "./test/secrets.json",
+  nestedSeparator: ".",
+});
+```
+
+To register one or more secret stores directly on a `DaprContainer`:
+
+```typescript
+import { DaprContainer } from "@dapr/testcontainer-node";
+
+const dapr = new DaprContainer()
+  .withNetwork(network)
+  .withSecretStore({ secrets: { alpha: "one" } })
+  .withSecretStore({ name: "second-store", secrets: { beta: "two" } });
 ```
 
 ## Versions

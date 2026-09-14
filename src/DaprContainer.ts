@@ -45,6 +45,7 @@ import {
   RabbitMQContainer,
 } from "./RabbitMQContainer";
 import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
+import { LocalFileSecretStoreOptions, ResolvedLocalFileSecretStore, resolveLocalFileSecretStore } from "./SecretStore";
 import { Subscription } from "./Subscription";
 
 export {
@@ -137,6 +138,7 @@ export class DaprContainer extends GenericContainer {
   private components: Component[] = [];
   private subscriptions: Subscription[] = [];
   private httpEndpoints: HttpEndpoint[] = [];
+  private secretStores: ResolvedLocalFileSecretStore[] = [];
 
   constructor(image: string = getDaprRuntimeImage()) {
     super(image);
@@ -381,6 +383,14 @@ export class DaprContainer extends GenericContainer {
       if (pubsubComponent) {
         this.subscriptions.push(new Subscription("local", pubsubComponent.name, "topic", undefined, "/events"));
       }
+    }
+
+    for (const secretStore of this.secretStores) {
+      log.info("> Secrets file: \n");
+      log.info(`\t${secretStore.containerSecretsFilePath}\n`);
+      this.withCopyContentToContainer([
+        { content: secretStore.secretsJson, target: secretStore.containerSecretsFilePath },
+      ]);
     }
 
     for (const component of this.components) {
@@ -636,6 +646,30 @@ export class DaprContainer extends GenericContainer {
   }
 
   /**
+   * Adds a local file-based secret store to the container, writing both the
+   * `secretstores.local.file` component and its backing JSON secrets file.
+   *
+   * @param options Configuration options for the secret store.
+   * @return This container.
+   */
+  withSecretStore(options: LocalFileSecretStoreOptions = {}): this {
+    const resolved = resolveLocalFileSecretStore(options);
+    if (this.secretStores.some((s) => s.name === resolved.name)) {
+      throw new Error(`A secret store component named "${resolved.name}" has already been registered`);
+    }
+    if (this.secretStores.some((s) => s.containerSecretsFilePath === resolved.containerSecretsFilePath)) {
+      throw new Error(`A secrets file is already mapped to "${resolved.containerSecretsFilePath}"`);
+    }
+    this.secretStores.push(resolved);
+    this.components.push(resolved.component);
+    return this;
+  }
+
+  getSecretStores(): ResolvedLocalFileSecretStore[] {
+    return this.secretStores.slice();
+  }
+
+  /**
    * Adds a Dapr component from a YAML file.
    * @param path Path to the YAML file.
    * @return This container.
@@ -663,6 +697,11 @@ export class StartedDaprContainer extends AbstractStartedContainer {
     const stoppedTestContainer = await super.stop(options);
     await Promise.all(this.containers.map((container) => container.stop(options)));
     return stoppedTestContainer;
+  }
+
+  getHost(): string {
+    const host = super.getHost();
+    return host === "localhost" ? "127.0.0.1" : host;
   }
 
   getHttpPort(): number {
