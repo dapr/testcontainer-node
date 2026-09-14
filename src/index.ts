@@ -20,6 +20,7 @@ export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
 export * from "./DistributedLockHarness";
 export * from "./HttpEndpoint";
+export * from "./JobsHarness";
 export * from "./MetadataEntry";
 export * from "./PubSubHarness";
 export * from "./RabbitMQContainer";
