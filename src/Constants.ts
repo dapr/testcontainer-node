@@ -13,6 +13,9 @@ limitations under the License.
 
 export const DEFAULT_DAPR_VERSION = "1.18.4";
 export const DAPR_RUNTIME_VERSION_ENV_VAR = "DAPR_RUNTIME_VERSION";
+export const OLLAMA_DEFAULT_IMAGE = "ollama/ollama";
+export const OLLAMA_DEFAULT_PORT = 11434;
+export const OLLAMA_DEFAULT_MODEL = "smollm2:135m";
 
 /**
  * Resolves the Dapr runtime version to use.

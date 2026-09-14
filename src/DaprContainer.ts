@@ -37,6 +37,7 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import { OLLAMA_DEFAULT_MODEL, OLLAMA_DEFAULT_PORT, OllamaContainer, StartedOllamaContainer } from "./OllamaContainer";
 import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
 import { Subscription } from "./Subscription";
 
@@ -66,6 +67,16 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type ConversationOptions = {
+  conversationComponentName?: string;
+  model?: string;
+  cacheTtl?: string;
+  ollamaContainer?: OllamaContainer;
+  ollamaEndpoint?: string;
+  ollamaHost?: string;
+  ollamaPort?: number;
+};
+
 export class DaprContainer extends GenericContainer {
   private daprLogLevel = "info";
   private daprApiLogging = false;
@@ -76,16 +87,21 @@ export class DaprContainer extends GenericContainer {
   private placementService = "placement";
   private schedulerService = "scheduler";
   private redisService = "redis";
+  private ollamaService = "ollama";
   private placementImage = getDaprPlacementImage();
   private schedulerImage = getDaprSchedulerImage();
   private placementContainer?: DaprPlacementContainer;
   private schedulerContainer?: DaprSchedulerContainer;
   private redisContainer?: RedisContainer;
+  private ollamaContainer?: OllamaContainer;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
+  private shouldReuseOllama = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private conversationEnabled = false;
+  private conversationOptions?: ConversationOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -151,6 +167,28 @@ export class DaprContainer extends GenericContainer {
 
       if (this.redisContainer) {
         startTasks.push(this.redisContainer.start());
+      }
+    }
+
+    if (this.conversationEnabled || this.ollamaContainer) {
+      if (!this.ollamaContainer && !this.conversationOptions?.ollamaEndpoint && !this.conversationOptions?.ollamaHost) {
+        const container = new OllamaContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.ollamaService);
+        if (this.shouldReuseOllama) {
+          container.withReuse().withAutoRemove(false);
+        }
+        this.ollamaContainer = container;
+      } else if (this.ollamaContainer) {
+        this.ollamaContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.ollamaService);
+      }
+
+      if (this.ollamaContainer) {
+        const model = this.conversationOptions?.model ?? OLLAMA_DEFAULT_MODEL;
+        startTasks.push(
+          this.ollamaContainer.start().then(async (container) => {
+            await container.ensureModel(model);
+            return container;
+          })
+        );
       }
     }
 
@@ -228,6 +266,26 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.conversationEnabled) {
+      const componentName =
+        this.conversationOptions?.conversationComponentName ?? DaprComponentNames.ConversationComponentName;
+      if (!this.components.some((component) => component.name === componentName)) {
+        const endpoint =
+          this.conversationOptions?.ollamaEndpoint ??
+          `http://${this.conversationOptions?.ollamaHost ?? this.ollamaService}:${
+            this.conversationOptions?.ollamaPort ?? OLLAMA_DEFAULT_PORT
+          }/v1`;
+        this.components.push(
+          OllamaContainer.createConversationComponent({
+            name: componentName,
+            model: this.conversationOptions?.model,
+            cacheTtl: this.conversationOptions?.cacheTtl,
+            endpoint,
+          })
+        );
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -297,8 +355,20 @@ export class DaprContainer extends GenericContainer {
     return this.redisContainer;
   }
 
+  getOllamaService(): string {
+    return this.ollamaService;
+  }
+
+  getOllamaContainer(): OllamaContainer | undefined {
+    return this.ollamaContainer;
+  }
+
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isConversationEnabled(): boolean {
+    return this.conversationEnabled;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -402,6 +472,16 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withOllamaService(ollamaService: string): this {
+    this.ollamaService = ollamaService;
+    return this;
+  }
+
+  withReusableOllama(shouldReuseOllama: boolean): this {
+    this.shouldReuseOllama = shouldReuseOllama;
+    return this;
+  }
+
   withPlacementContainer(placementContainer: DaprPlacementContainer): this {
     this.placementContainer = placementContainer;
     return this;
@@ -418,11 +498,26 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withOllamaContainer(ollamaContainer: OllamaContainer, ollamaService = "ollama"): this {
+    this.ollamaContainer = ollamaContainer;
+    this.ollamaService = ollamaService;
+    return this;
+  }
+
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withConversation(options?: ConversationOptions): this {
+    this.conversationEnabled = true;
+    this.conversationOptions = options;
+    if (options?.ollamaContainer) {
+      this.ollamaContainer = options.ollamaContainer;
     }
     return this;
   }
@@ -480,5 +575,11 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getContainers(): StartedTestContainer[] {
     return this.containers.slice();
+  }
+
+  getOllamaContainer(): StartedOllamaContainer | undefined {
+    return this.containers.find((container): container is StartedOllamaContainer => {
+      return container instanceof StartedOllamaContainer;
+    });
   }
 }

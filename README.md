@@ -56,6 +56,19 @@ const state = await client.waitForWorkflowCompletion(instanceId);
 await harness.stop();
 ```
 
+## Dapr Conversation Testing
+
+`ConversationHarness` starts Dapr and a CPU-only Ollama container, pulls the small `smollm2:135m` model by default, and configures a `conversation.ollama` component:
+
+```typescript
+import { ConversationHarness } from "@dapr/testcontainer-node";
+
+await using harness = await new ConversationHarness().start();
+const response = await harness.converse("Reply with the word pong.");
+```
+
+Use `modelName`, `ollamaContainer`, or `ollamaEndpoint` in the harness options to override the defaults.
+
 ## Versions
 
 This library follows [Semantic Versioning](https://semver.org/).

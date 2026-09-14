@@ -13,6 +13,7 @@ limitations under the License.
 
 export * from "./Component";
 export * from "./Configuration";
+export * from "./ConversationHarness";
 export * from "./Constants";
 export * from "./DaprContainer";
 export * from "./DaprPlacementContainer";
@@ -20,6 +21,7 @@ export * from "./DaprRuntimeVersionGate";
 export * from "./DaprSchedulerContainer";
 export * from "./HttpEndpoint";
 export * from "./MetadataEntry";
+export * from "./OllamaContainer";
 export * from "./RedisContainer";
 export * from "./Subscription";
 export * from "./WorkflowHarness";
