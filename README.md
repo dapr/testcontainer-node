@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts) and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+A usage example can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts), and [`src/DistributedLockHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DistributedLockHarness.test.ts).
 
 ## Using the library
 
@@ -52,6 +52,40 @@ await runtime.start();
 const client = harness.createWorkflowClient();
 const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
 const state = await client.waitForWorkflowCompletion(instanceId);
+
+await harness.stop();
+```
+
+## Dapr Distributed Lock Testing
+
+You can use `DistributedLockHarness` or `.withDistributedLock()` on `DaprContainer` to test Dapr Distributed Locks with an automated Redis lock store:
+
+```typescript
+import { DistributedLockHarness } from "@dapr/testcontainer-node";
+import { LockStatus } from "@dapr/dapr";
+
+const harness = new DistributedLockHarness();
+await harness.start();
+
+const client = harness.createDaprClient();
+await client.start();
+
+// Acquire a distributed lock
+const lockResponse = await client.lock.lock(
+  DistributedLockHarness.DistributedLockComponentName,
+  "resource-id",
+  "owner-id",
+  10 // expiry in seconds
+);
+console.log(lockResponse.success); // true
+
+// Release the distributed lock
+const unlockResponse = await client.lock.unlock(
+  DistributedLockHarness.DistributedLockComponentName,
+  "resource-id",
+  "owner-id"
+);
+console.log(unlockResponse.status === LockStatus.Success); // true
 
 await harness.stop();
 ```

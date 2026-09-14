@@ -66,6 +66,13 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type DistributedLockOptions = {
+  lockStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+};
+
 export class DaprContainer extends GenericContainer {
   private daprLogLevel = "info";
   private daprApiLogging = false;
@@ -86,6 +93,8 @@ export class DaprContainer extends GenericContainer {
   private shouldReuseRedis = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private distributedLockEnabled = false;
+  private distributedLockOptions?: DistributedLockOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -134,10 +143,11 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer.start(),
     ];
 
-    if (this.workflowEnabled || this.redisContainer) {
+    if (this.workflowEnabled || this.distributedLockEnabled || this.redisContainer) {
       if (!this.redisContainer) {
         // Only auto-create Redis if no external host is configured
-        if (!this.workflowOptions?.redisHost) {
+        const hasExternalHost = this.workflowOptions?.redisHost || this.distributedLockOptions?.redisHost;
+        if (!hasExternalHost) {
           const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
           if (this.shouldReuseRedis) {
             container.withReuse().withAutoRemove(false);
@@ -228,6 +238,23 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.distributedLockEnabled) {
+      const lockStoreName =
+        this.distributedLockOptions?.lockStoreName ?? DaprComponentNames.DistributedLockComponentName;
+      const alreadyHasLockStore = this.components.some((c) => c.name === lockStoreName);
+      if (!alreadyHasLockStore) {
+        const redisHost =
+          this.distributedLockOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisLock = RedisContainer.createDistributedLockComponent({
+          name: lockStoreName,
+          redisHost,
+          redisPassword: this.distributedLockOptions?.redisPassword,
+        });
+        this.components.push(redisLock);
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -299,6 +326,10 @@ export class DaprContainer extends GenericContainer {
 
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isDistributedLockEnabled(): boolean {
+    return this.distributedLockEnabled;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -421,6 +452,15 @@ export class DaprContainer extends GenericContainer {
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withDistributedLock(options?: DistributedLockOptions): this {
+    this.distributedLockEnabled = true;
+    this.distributedLockOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }
