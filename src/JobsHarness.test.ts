@@ -41,9 +41,7 @@ describe("JobsHarness", () => {
 
   it("should throw when accessing the started container before start()", () => {
     const harness = new JobsHarness();
-    expect(() => harness.getStartedDaprContainer()).toThrow(
-      "JobsHarness has not been started. Call start() first."
-    );
+    expect(() => harness.getStartedDaprContainer()).toThrow("JobsHarness has not been started. Call start() first.");
   });
 
   it("should throw when scheduling a job without schedule or dueTime", async () => {
