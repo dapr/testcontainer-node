@@ -141,12 +141,14 @@ export class DaprContainer extends GenericContainer {
   constructor(image: string = getDaprRuntimeImage()) {
     super(image);
     this.withExposedPorts(DAPRD_DEFAULT_HTTP_PORT, DAPRD_DEFAULT_GRPC_PORT)
-      .withWaitStrategy(
-        Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
-          (statusCode) => statusCode >= 200 && statusCode <= 399
-        )
-      )
+      .withWaitStrategy(DaprContainer.outboundHealthWaitStrategy())
       .withStartupTimeout(120_000);
+  }
+
+  private static outboundHealthWaitStrategy() {
+    return Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
+      (statusCode) => statusCode >= 200 && statusCode <= 399
+    );
   }
 
   public withNetwork(network: StartedNetwork): this {
@@ -597,6 +599,9 @@ export class DaprContainer extends GenericContainer {
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
+    this.withWaitStrategy(
+      Wait.forAll([DaprContainer.outboundHealthWaitStrategy(), Wait.forLogMessage(/Workflow engine started/i)])
+    );
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }
