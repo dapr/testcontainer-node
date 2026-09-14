@@ -13,6 +13,7 @@ limitations under the License.
 
 import assert from "node:assert";
 import fs from "node:fs";
+import YAML from "yaml";
 import {
   AbstractStartedContainer,
   GenericContainer,
@@ -37,6 +38,12 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import {
+  RABBITMQ_DEFAULT_PASSWORD,
+  RABBITMQ_DEFAULT_PORT,
+  RABBITMQ_DEFAULT_USER,
+  RabbitMQContainer,
+} from "./RabbitMQContainer";
 import { REDIS_DEFAULT_PORT, RedisContainer } from "./RedisContainer";
 import { LocalFileSecretStoreOptions, ResolvedLocalFileSecretStore, resolveLocalFileSecretStore } from "./SecretStore";
 import { Subscription } from "./Subscription";
@@ -67,7 +74,39 @@ export type WorkflowOptions = {
   enableActorStateStore?: boolean;
 };
 
+export type PubSubOptions = {
+  pubsubName?: string;
+  rabbitMQContainer?: RabbitMQContainer;
+  rabbitMQHost?: string;
+  username?: string;
+  password?: string;
+  protocol?: string;
+  requeueInFailure?: boolean;
+};
+
+export type StateManagementOptions = {
+  stateStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+  enableActorStateStore?: boolean;
+  keyPrefix?: string;
+};
+
 export class DaprContainer extends GenericContainer {
+  private static readonly REDACTED_VALUE = "[REDACTED]";
+  private static readonly SENSITIVE_KEYS = new Set([
+    "password",
+    "redispassword",
+    "secret",
+    "secretkey",
+    "token",
+    "apikey",
+    "clientsecret",
+    "accesskey",
+    "accesstoken",
+  ]);
+
   private daprLogLevel = "info";
   private daprApiLogging = false;
   private appName = "dapr-app";
@@ -77,16 +116,23 @@ export class DaprContainer extends GenericContainer {
   private placementService = "placement";
   private schedulerService = "scheduler";
   private redisService = "redis";
+  private rabbitMQService = "rabbitmq";
   private placementImage = getDaprPlacementImage();
   private schedulerImage = getDaprSchedulerImage();
   private placementContainer?: DaprPlacementContainer;
   private schedulerContainer?: DaprSchedulerContainer;
   private redisContainer?: RedisContainer;
+  private rabbitMQContainer?: RabbitMQContainer;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
+  private shouldReuseRabbitMQ = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private pubSubEnabled = false;
+  private pubSubOptions?: PubSubOptions;
+  private stateManagementEnabled = false;
+  private stateManagementOptions?: StateManagementOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -97,17 +143,48 @@ export class DaprContainer extends GenericContainer {
   constructor(image: string = getDaprRuntimeImage()) {
     super(image);
     this.withExposedPorts(DAPRD_DEFAULT_HTTP_PORT, DAPRD_DEFAULT_GRPC_PORT)
-      .withWaitStrategy(
-        Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
-          (statusCode) => statusCode >= 200 && statusCode <= 399
-        )
-      )
+      .withWaitStrategy(DaprContainer.outboundHealthWaitStrategy())
       .withStartupTimeout(120_000);
+  }
+
+  private static outboundHealthWaitStrategy() {
+    return Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
+      (statusCode) => statusCode >= 200 && statusCode <= 399
+    );
   }
 
   public withNetwork(network: StartedNetwork): this {
     this.startedNetwork = network;
     return super.withNetwork(network);
+  }
+
+  private static redactSecretValues<T>(value: T): T {
+    if (Array.isArray(value)) {
+      return value.map((entry) => DaprContainer.redactSecretValues(entry)) as T;
+    }
+
+    if (value !== null && typeof value === "object") {
+      const redacted: Record<string, unknown> = {};
+      for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+        if (DaprContainer.SENSITIVE_KEYS.has(key.toLowerCase())) {
+          redacted[key] = DaprContainer.REDACTED_VALUE;
+        } else {
+          redacted[key] = DaprContainer.redactSecretValues(childValue);
+        }
+      }
+      return redacted as T;
+    }
+
+    return value;
+  }
+
+  private static redactYaml(yamlText: string): string {
+    try {
+      const parsed = YAML.parse(yamlText);
+      return YAML.stringify(DaprContainer.redactSecretValues(parsed), { indentSeq: false });
+    } catch {
+      return yamlText;
+    }
   }
 
   public override async start(): Promise<StartedDaprContainer> {
@@ -136,23 +213,46 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer.start(),
     ];
 
-    if (this.workflowEnabled || this.redisContainer) {
-      if (!this.redisContainer) {
-        // Only auto-create Redis if no external host is configured
-        if (!this.workflowOptions?.redisHost) {
-          const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
-          if (this.shouldReuseRedis) {
-            container.withReuse().withAutoRemove(false);
-          }
-          this.redisContainer = container;
+    const needsSharedRedis =
+      (this.workflowEnabled && !this.workflowOptions?.redisHost) ||
+      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost);
+
+    if (this.redisContainer || needsSharedRedis) {
+      if (!this.redisContainer && needsSharedRedis) {
+        const container = new RedisContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
+        if (this.shouldReuseRedis) {
+          container.withReuse().withAutoRemove(false);
         }
-      } else {
+        this.redisContainer = container;
+      } else if (this.redisContainer) {
         // Attach explicitly supplied Redis container to the network and alias
         this.redisContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.redisService);
       }
 
       if (this.redisContainer) {
         startTasks.push(this.redisContainer.start());
+      }
+    }
+
+    if (this.pubSubEnabled || this.rabbitMQContainer) {
+      if (!this.rabbitMQContainer) {
+        // Only auto-create RabbitMQ if no external host is configured
+        if (!this.pubSubOptions?.rabbitMQHost) {
+          const container = new RabbitMQContainer()
+            .withNetwork(this.startedNetwork)
+            .withNetworkAliases(this.rabbitMQService);
+          if (this.shouldReuseRabbitMQ) {
+            container.withReuse().withAutoRemove(false);
+          }
+          this.rabbitMQContainer = container;
+        }
+      } else {
+        // Attach explicitly supplied RabbitMQ container to the network and alias
+        this.rabbitMQContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.rabbitMQService);
+      }
+
+      if (this.rabbitMQContainer) {
+        startTasks.push(this.rabbitMQContainer.start());
       }
     }
 
@@ -208,7 +308,7 @@ export class DaprContainer extends GenericContainer {
     if (this.configuration) {
       const configurationYaml = this.configuration.toYaml();
       log.info("> Configuration YAML: \n");
-      log.info(`\t\n${configurationYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(configurationYaml)}\n`);
       this.withCopyContentToContainer([
         { content: configurationYaml, target: `/dapr-resources/${this.configuration.name}.yaml` },
       ]);
@@ -225,6 +325,44 @@ export class DaprContainer extends GenericContainer {
           name: stateStoreName,
           redisHost,
           actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
+        });
+        this.components.push(redisStateStore);
+      }
+    }
+
+    if (this.pubSubEnabled) {
+      const pubsubName = this.pubSubOptions?.pubsubName ?? DaprComponentNames.PubSubComponentName;
+      const alreadyHasPubSub = this.components.some((c) => c.name === pubsubName);
+      if (!alreadyHasPubSub) {
+        const hostname =
+          this.pubSubOptions?.rabbitMQHost ??
+          `${this.rabbitMQService}:${this.rabbitMQContainer ? this.rabbitMQContainer.getPort() : RABBITMQ_DEFAULT_PORT}`;
+        const rabbitMQPubSub = RabbitMQContainer.createPubSubComponent({
+          name: pubsubName,
+          hostname,
+          username: this.pubSubOptions?.username ?? this.rabbitMQContainer?.getUsername() ?? RABBITMQ_DEFAULT_USER,
+          password: this.pubSubOptions?.password ?? this.rabbitMQContainer?.getPassword() ?? RABBITMQ_DEFAULT_PASSWORD,
+          protocol: this.pubSubOptions?.protocol,
+          requeueInFailure: this.pubSubOptions?.requeueInFailure,
+        });
+        this.components.push(rabbitMQPubSub);
+      }
+    }
+
+    if (this.stateManagementEnabled) {
+      const stateStoreName =
+        this.stateManagementOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
+      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
+      if (!alreadyHasStateStore) {
+        const redisHost =
+          this.stateManagementOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisStateStore = RedisContainer.createStateStoreComponent({
+          name: stateStoreName,
+          redisHost,
+          redisPassword: this.stateManagementOptions?.redisPassword,
+          actorStateStore: this.stateManagementOptions?.enableActorStateStore ?? true,
+          keyPrefix: this.stateManagementOptions?.keyPrefix,
         });
         this.components.push(redisStateStore);
       }
@@ -258,14 +396,14 @@ export class DaprContainer extends GenericContainer {
     for (const component of this.components) {
       const componentYaml = component.toYaml();
       log.info("> Component YAML: \n");
-      log.info(`\t\n${componentYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(componentYaml)}\n`);
       this.withCopyContentToContainer([{ content: componentYaml, target: `/dapr-resources/${component.name}.yaml` }]);
     }
 
     for (const subscription of this.subscriptions) {
       const subscriptionYaml = subscription.toYaml();
       log.info("> Subscription YAML: \n");
-      log.info(`\t\n${subscriptionYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(subscriptionYaml)}\n`);
       this.withCopyContentToContainer([
         { content: subscriptionYaml, target: `/dapr-resources/${subscription.name}.yaml` },
       ]);
@@ -274,7 +412,7 @@ export class DaprContainer extends GenericContainer {
     for (const endpoint of this.httpEndpoints) {
       const endpointYaml = endpoint.toYaml();
       log.info("> HTTPEndpoint YAML: \n");
-      log.info(`\t\n${endpointYaml}\n`);
+      log.info(`\t\n${DaprContainer.redactYaml(endpointYaml)}\n`);
       this.withCopyContentToContainer([{ content: endpointYaml, target: `/dapr-resources/${endpoint.name}.yaml` }]);
     }
   }
@@ -307,8 +445,32 @@ export class DaprContainer extends GenericContainer {
     return this.redisContainer;
   }
 
+  getRabbitMQService(): string {
+    return this.rabbitMQService;
+  }
+
+  getRabbitMQContainer(): RabbitMQContainer | undefined {
+    return this.rabbitMQContainer;
+  }
+
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isPubSubEnabled(): boolean {
+    return this.pubSubEnabled;
+  }
+
+  getPubSubOptions(): PubSubOptions | undefined {
+    return this.pubSubOptions;
+  }
+
+  isStateManagementEnabled(): boolean {
+    return this.stateManagementEnabled;
+  }
+
+  getStateManagementOptions(): StateManagementOptions | undefined {
+    return this.stateManagementOptions;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -412,6 +574,11 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withReusableRabbitMQ(shouldReuseRabbitMQ: boolean): this {
+    this.shouldReuseRabbitMQ = shouldReuseRabbitMQ;
+    return this;
+  }
+
   withPlacementContainer(placementContainer: DaprPlacementContainer): this {
     this.placementContainer = placementContainer;
     return this;
@@ -428,9 +595,45 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withRabbitMQService(rabbitMQService: string): this {
+    this.rabbitMQService = rabbitMQService;
+    return this;
+  }
+
+  withRabbitMQContainer(rabbitMQContainer: RabbitMQContainer, rabbitMQService = "rabbitmq"): this {
+    this.rabbitMQContainer = rabbitMQContainer;
+    this.rabbitMQService = rabbitMQService;
+    return this;
+  }
+
   withWorkflow(options?: WorkflowOptions): this {
     this.workflowEnabled = true;
     this.workflowOptions = options;
+    this.withWaitStrategy(
+      Wait.forAll([
+        DaprContainer.outboundHealthWaitStrategy(),
+        Wait.forLogMessage(/Workflow engine started/i),
+        Wait.forLogMessage(/Scheduler clients initialized/i),
+      ])
+    );
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withPubSub(options?: PubSubOptions): this {
+    this.pubSubEnabled = true;
+    this.pubSubOptions = options;
+    if (options?.rabbitMQContainer) {
+      this.rabbitMQContainer = options.rabbitMQContainer;
+    }
+    return this;
+  }
+
+  withStateManagement(options?: StateManagementOptions): this {
+    this.stateManagementEnabled = true;
+    this.stateManagementOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }
