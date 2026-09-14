@@ -73,6 +73,17 @@ describe("DaprContainer", () => {
     expect(startedContainer.getContainers()).toHaveLength(3);
   }, 60_000);
 
+  it("should start a shared Redis container when actors are enabled", async () => {
+    await using network = await new Network().start();
+    const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE).withNetwork(network).withActors();
+
+    await using startedContainer = await dapr.start();
+
+    expect(dapr.isActorsEnabled()).toBe(true);
+    expect(dapr.getRedisContainer()).toBeDefined();
+    expect(startedContainer.getContainers()).toHaveLength(3);
+  }, 60_000);
+
   it("should initialize DaprClient", async () => {
     await using network = await new Network().start();
     const dapr = new DaprContainer(DAPR_RUNTIME_IMAGE)

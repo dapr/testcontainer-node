@@ -76,6 +76,16 @@ export type StateManagementOptions = {
   keyPrefix?: string;
 };
 
+export type ActorOptions = {
+  stateStoreName?: string;
+  redisContainer?: RedisContainer;
+  redisHost?: string;
+  redisPassword?: string;
+  enableActorStateStore?: boolean;
+  actorStateTTL?: boolean;
+  keyPrefix?: string;
+};
+
 export class DaprContainer extends GenericContainer {
   private static readonly REDACTED_VALUE = "[REDACTED]";
   private static readonly SENSITIVE_KEYS = new Set([
@@ -111,6 +121,8 @@ export class DaprContainer extends GenericContainer {
   private workflowOptions?: WorkflowOptions;
   private stateManagementEnabled = false;
   private stateManagementOptions?: StateManagementOptions;
+  private actorsEnabled = false;
+  private actorOptions?: ActorOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
   private components: Component[] = [];
@@ -190,7 +202,8 @@ export class DaprContainer extends GenericContainer {
 
     const needsSharedRedis =
       (this.workflowEnabled && !this.workflowOptions?.redisHost) ||
-      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost);
+      (this.stateManagementEnabled && !this.stateManagementOptions?.redisHost) ||
+      (this.actorsEnabled && !this.actorOptions?.redisHost);
 
     if (this.redisContainer || needsSharedRedis) {
       if (!this.redisContainer && needsSharedRedis) {
@@ -216,6 +229,15 @@ export class DaprContainer extends GenericContainer {
   protected override async beforeContainerCreated(): Promise<void> {
     assert(this.placementContainer, "DaprPlacementContainer expected");
     assert(this.schedulerContainer, "DaprSchedulerContainer expected");
+
+    if (this.actorsEnabled) {
+      if (!this.configuration && (this.actorOptions?.actorStateTTL ?? true)) {
+        this.configuration = new Configuration("actorConfig", undefined, undefined, [
+          { name: "ActorStateTTL", enabled: true },
+        ]);
+      }
+    }
+
     const cmds = [
       "./daprd",
       "--app-id",
@@ -302,6 +324,24 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    if (this.actorsEnabled) {
+      const stateStoreName = this.actorOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
+      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
+      if (!alreadyHasStateStore) {
+        const redisHost =
+          this.actorOptions?.redisHost ??
+          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+        const redisStateStore = RedisContainer.createStateStoreComponent({
+          name: stateStoreName,
+          redisHost,
+          redisPassword: this.actorOptions?.redisPassword,
+          actorStateStore: this.actorOptions?.enableActorStateStore ?? true,
+          keyPrefix: this.actorOptions?.keyPrefix,
+        });
+        this.components.push(redisStateStore);
+      }
+    }
+
     const hasState = this.components.some((c) => c.type.startsWith("state."));
     if (!hasState) {
       this.components.push(new Component("kvstore", "state.in-memory", "v1", []));
@@ -381,6 +421,14 @@ export class DaprContainer extends GenericContainer {
 
   getStateManagementOptions(): StateManagementOptions | undefined {
     return this.stateManagementOptions;
+  }
+
+  isActorsEnabled(): boolean {
+    return this.actorsEnabled;
+  }
+
+  getActorOptions(): ActorOptions | undefined {
+    return this.actorOptions;
   }
 
   getConfiguration(): Configuration | undefined {
@@ -512,6 +560,15 @@ export class DaprContainer extends GenericContainer {
   withStateManagement(options?: StateManagementOptions): this {
     this.stateManagementEnabled = true;
     this.stateManagementOptions = options;
+    if (options?.redisContainer) {
+      this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withActors(options?: ActorOptions): this {
+    this.actorsEnabled = true;
+    this.actorOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
     }

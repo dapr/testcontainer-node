@@ -18,6 +18,11 @@ export type ListEntry = {
   type: string;
 };
 
+export type FeatureConfigurationSetting = {
+  name: string;
+  enabled: boolean;
+};
+
 export class AppHttpPipeline {
   constructor(public readonly handlers: ListEntry[]) {}
 }
@@ -52,6 +57,7 @@ type ConfigurationResource = {
   spec: {
     tracing?: TracingConfigurationSettings;
     appHttpPipeline?: AppHttpPipeline;
+    features?: FeatureConfigurationSetting[];
   };
 };
 
@@ -60,11 +66,11 @@ type ConfigurationResource = {
  *
  * @remarks
  * This class is used to create a configuration object for Dapr. It includes
- * tracing and appHttpPipeline settings.
+ * tracing, appHttpPipeline, and feature settings.
  *
  * @example
  * ```typescript
- * const config = new Configuration("my-config", tracingConfig, appHttpPipeline);
+ * const config = new Configuration("my-config", tracingConfig, appHttpPipeline, [{ name: "ActorStateTTL", enabled: true }]);
  * console.log(config.toYaml());
  * ```
  */
@@ -84,24 +90,33 @@ export class Configuration {
    * @param tracing         TracingConfigParameters tracing configuration
    *                        parameters.
    * @param appHttpPipeline AppHttpPipeline middleware configuration.
+   * @param features        Optional list of feature configuration settings.
    */
   constructor(
     public readonly name: string,
-    public readonly tracing: TracingConfigurationSettings,
-    public readonly appHttpPipeline: AppHttpPipeline
+    public readonly tracing?: TracingConfigurationSettings,
+    public readonly appHttpPipeline?: AppHttpPipeline,
+    public readonly features?: FeatureConfigurationSetting[]
   ) {}
 
   toYaml(): string {
+    const spec: ConfigurationResource["spec"] = {};
+    if (this.tracing !== undefined) {
+      spec.tracing = this.tracing;
+    }
+    if (this.appHttpPipeline !== undefined) {
+      spec.appHttpPipeline = this.appHttpPipeline;
+    }
+    if (this.features !== undefined) {
+      spec.features = this.features;
+    }
     const resource: ConfigurationResource = {
       apiVersion: "dapr.io/v1alpha1",
       kind: "Configuration",
       metadata: {
         name: this.name,
       },
-      spec: {
-        ...{ tracing: this.tracing },
-        ...{ appHttpPipeline: this.appHttpPipeline },
-      },
+      spec,
     };
     return YAML.stringify(resource, { indentSeq: false });
   }
