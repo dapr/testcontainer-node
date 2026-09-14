@@ -699,6 +699,11 @@ export class StartedDaprContainer extends AbstractStartedContainer {
     return stoppedTestContainer;
   }
 
+  getHost(): string {
+    const host = super.getHost();
+    return host === "localhost" ? "127.0.0.1" : host;
+  }
+
   getHttpPort(): number {
     return this.getMappedPort(DAPRD_DEFAULT_HTTP_PORT);
   }
