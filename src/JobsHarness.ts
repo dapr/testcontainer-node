@@ -186,7 +186,7 @@ export class JobsHarness {
       body.overwrite = options.overwrite;
     }
     if (options.failurePolicy !== undefined) {
-      body.failure_policy = options.failurePolicy;
+      body.failurePolicy = options.failurePolicy;
     }
 
     await this.request("POST", `/v1.0-alpha1/jobs/${encodeURIComponent(name)}`, body);
