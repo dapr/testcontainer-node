@@ -23,5 +23,6 @@ export * from "./MetadataEntry";
 export * from "./PubSubHarness";
 export * from "./RabbitMQContainer";
 export * from "./RedisContainer";
+export * from "./StateManagementHarness";
 export * from "./Subscription";
 export * from "./WorkflowHarness";
