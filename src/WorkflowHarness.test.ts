@@ -30,6 +30,22 @@ const helloWorkflow: TWorkflow = async function* (
   return result;
 };
 
+const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30_000));
+
+const withTimeout = async <T>(operation: Promise<T>, timeoutMs: number, description: string): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${description} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 describe("WorkflowHarness and Workflow Support", () => {
   it("should configure DaprContainer with workflow and redis state store", () => {
     const dapr = new DaprContainer().withWorkflow({
@@ -81,9 +97,15 @@ describe("WorkflowHarness and Workflow Support", () => {
       runtime.registerWorkflow(helloWorkflow);
       runtime.registerActivity(helloActivity);
       await runtime.start();
+      // WorkflowRuntime starts its gRPC worker in the background.
+      await waitForWorkflowWorker();
 
       const client = harness.createWorkflowClient();
-      const instanceId = await client.scheduleNewWorkflow(helloWorkflow, "World");
+      const instanceId = await withTimeout(
+        client.scheduleNewWorkflow(helloWorkflow, "World"),
+        60_000,
+        "Scheduling workflow"
+      );
       const state = await client.waitForWorkflowCompletion(instanceId, undefined, 60);
 
       expect(state).toBeDefined();
@@ -92,7 +114,7 @@ describe("WorkflowHarness and Workflow Support", () => {
     } finally {
       await harness.stop();
     }
-  }, 300_000);
+  }, 180_000);
 
   it("should run a workflow end-to-end using DaprContainer directly", async () => {
     await using network = await new Network().start();
@@ -113,6 +135,8 @@ describe("WorkflowHarness and Workflow Support", () => {
     runtime.registerWorkflow(helloWorkflow);
     runtime.registerActivity(helloActivity);
     await runtime.start();
+    // WorkflowRuntime starts its gRPC worker in the background.
+    await waitForWorkflowWorker();
 
     const client = new (await import("@dapr/dapr")).DaprWorkflowClient({
       daprHost: startedContainer.getHost(),
@@ -120,7 +144,11 @@ describe("WorkflowHarness and Workflow Support", () => {
     });
 
     try {
-      const instanceId = await client.scheduleNewWorkflow(helloWorkflow, "Dapr Node");
+      const instanceId = await withTimeout(
+        client.scheduleNewWorkflow(helloWorkflow, "Dapr Node"),
+        60_000,
+        "Scheduling workflow"
+      );
       const state = await client.waitForWorkflowCompletion(instanceId, undefined, 60);
 
       expect(state).toBeDefined();
@@ -130,5 +158,5 @@ describe("WorkflowHarness and Workflow Support", () => {
       await client.stop();
       await runtime.stop();
     }
-  }, 300_000);
+  }, 180_000);
 });
