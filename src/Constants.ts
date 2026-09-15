@@ -72,4 +72,5 @@ export const DaprComponentNames = {
   ConversationComponentName: "conversation",
   CryptographyComponentName: "cryptography",
   DistributedLockComponentName: "distributed-lock",
+  SecretStoreComponentName: "localsecretstore",
 } as const;
