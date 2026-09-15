@@ -7,7 +7,7 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-Usage examples can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/CryptographyHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/CryptographyHarness.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/SecretStoreHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/SecretStoreHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+Usage examples can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/ActorHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ActorHarness.test.ts), [`src/ConversationHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ConversationHarness.test.ts), [`src/CryptographyHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/CryptographyHarness.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/SecretStoreHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/SecretStoreHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
 
 ## Using the library
 
@@ -89,6 +89,65 @@ await runtime.start();
 const client = harness.createWorkflowClient();
 const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
 const state = await client.waitForWorkflowCompletion(instanceId);
+
+await harness.stop();
+```
+
+## Dapr Actor Testing
+
+You can use `ActorHarness` or `.withActors()` on `DaprContainer` to test Dapr Actors backed by the Redis actor state store, placement service, and scheduler service:
+
+```typescript
+import { ActorHarness } from "@dapr/testcontainer-node";
+import { AbstractActor, ActorId } from "@dapr/dapr";
+import { TestContainers } from "testcontainers";
+
+interface ICounterActor {
+  increment(amount: number): Promise<number>;
+  getCount(): Promise<number>;
+}
+
+class CounterActor extends AbstractActor implements ICounterActor {
+  async increment(amount = 1): Promise<number> {
+    const stateManager = this.getStateManager<number>();
+    const [hasValue, current] = await stateManager.tryGetState("counter");
+    const count = hasValue && current !== null && current !== undefined ? current : 0;
+    const next = count + amount;
+    await stateManager.setState("counter", next);
+    await stateManager.saveState();
+    return next;
+  }
+
+  async getCount(): Promise<number> {
+    const stateManager = this.getStateManager<number>();
+    const [hasValue, count] = await stateManager.tryGetState("counter");
+    return hasValue && count !== null && count !== undefined ? count : 0;
+  }
+}
+
+const appPort = 8090;
+await TestContainers.exposeHostPorts(appPort);
+
+const harness = new ActorHarness({
+  appPort,
+  appChannelAddress: "host.testcontainers.internal",
+});
+
+// Register actor on server
+const server = harness.createDaprServer({
+  serverPort: appPort.toString(),
+  serverHost: "0.0.0.0",
+});
+await server.actor.registerActor(CounterActor);
+await server.actor.init();
+await server.daprServer.start("0.0.0.0", appPort.toString());
+
+// Start harness (starts placement, scheduler, redis, and daprd sidecar)
+await harness.start();
+
+// Create actor proxy and invoke methods
+const proxy = harness.createActorProxy<ICounterActor>(CounterActor, "counter-1");
+const count = await proxy.increment(5); // 5
 
 await harness.stop();
 ```

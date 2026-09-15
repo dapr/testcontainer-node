@@ -56,4 +56,18 @@ describe("Configuration", () => {
       "      type: middleware.http.routeralias\n";
     expect(configurationYaml).toEqual(expectedConfigurationYaml);
   });
+
+  it("should convert features configuration to YAML", () => {
+    const config = new Configuration("actorConfig", undefined, undefined, [{ name: "ActorStateTTL", enabled: true }]);
+    const expectedYaml =
+      "apiVersion: dapr.io/v1alpha1\n" +
+      "kind: Configuration\n" +
+      "metadata:\n" +
+      "  name: actorConfig\n" +
+      "spec:\n" +
+      "  features:\n" +
+      "  - name: ActorStateTTL\n" +
+      "    enabled: true\n";
+    expect(config.toYaml()).toEqual(expectedYaml);
+  });
 });

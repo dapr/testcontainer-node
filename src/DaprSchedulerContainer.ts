@@ -17,6 +17,7 @@ import { getDaprSchedulerImage } from "./Constants";
 export class DaprSchedulerContainer extends GenericContainer {
   private static readonly healthPort = 8080;
   private schedulerPort = 51005;
+  private broadcastHost?: string;
 
   constructor(image: string = getDaprSchedulerImage()) {
     super(image);
@@ -36,11 +37,20 @@ export class DaprSchedulerContainer extends GenericContainer {
       { content: "", target: "./dapr-scheduler-existing-cluster/", mode: 0o777 },
     ]);
     this.withExposedPorts(this.schedulerPort, DaprSchedulerContainer.healthPort);
-    this.withCommand(["./scheduler", "--port", this.schedulerPort.toString(), "--etcd-data-dir", "."]);
+    const command = ["./scheduler", "--port", this.schedulerPort.toString(), "--etcd-data-dir", "."];
+    if (this.broadcastHost) {
+      command.push("--override-broadcast-host-port", `${this.broadcastHost}:${this.schedulerPort}`);
+    }
+    this.withCommand(command);
   }
 
   withPort(port: number): this {
     this.schedulerPort = port;
+    return this;
+  }
+
+  withBroadcastHost(host: string): this {
+    this.broadcastHost = host;
     return this;
   }
 
