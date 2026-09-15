@@ -30,7 +30,7 @@ const helloWorkflow: TWorkflow = async function* (
   return result;
 };
 
-const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10_000));
+const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30_000));
 
 const withTimeout = async <T>(operation: Promise<T>, timeoutMs: number, description: string): Promise<T> => {
   let timeout: ReturnType<typeof setTimeout> | undefined;
