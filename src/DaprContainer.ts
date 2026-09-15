@@ -251,6 +251,7 @@ export class DaprContainer extends GenericContainer {
       }
       this.schedulerContainer = container;
     }
+    this.schedulerContainer.withBroadcastHost(this.schedulerService);
 
     const startedContainers: StartedTestContainer[] = [];
     const startContainer = async (container: GenericContainer): Promise<StartedTestContainer> => {
