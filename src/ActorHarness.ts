@@ -220,7 +220,8 @@ export class ActorHarness {
   }
 
   public createDaprServer(serverOptions?: Partial<DaprServerOptions>): DaprServer {
-    const requestedServerPort = serverOptions?.serverPort ?? (this.options.appPort ? this.options.appPort.toString() : "3001");
+    const requestedServerPort =
+      serverOptions?.serverPort ?? (this.options.appPort ? this.options.appPort.toString() : "3001");
     const parsedServerPort = Number.parseInt(requestedServerPort, 10);
     if (Number.isNaN(parsedServerPort)) {
       throw new Error(`Invalid DaprServer port: ${requestedServerPort}`);
