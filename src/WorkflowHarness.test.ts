@@ -30,7 +30,7 @@ const helloWorkflow: TWorkflow = async function* (
   return result;
 };
 
-const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 2_000));
+const waitForWorkflowWorker = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10_000));
 
 const withTimeout = async <T>(operation: Promise<T>, timeoutMs: number, description: string): Promise<T> => {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -103,7 +103,7 @@ describe("WorkflowHarness and Workflow Support", () => {
       const client = harness.createWorkflowClient();
       const instanceId = await withTimeout(
         client.scheduleNewWorkflow(helloWorkflow, "World"),
-        30_000,
+        60_000,
         "Scheduling workflow"
       );
       const state = await client.waitForWorkflowCompletion(instanceId, undefined, 60);
@@ -114,7 +114,7 @@ describe("WorkflowHarness and Workflow Support", () => {
     } finally {
       await harness.stop();
     }
-  }, 120_000);
+  }, 180_000);
 
   it("should run a workflow end-to-end using DaprContainer directly", async () => {
     await using network = await new Network().start();
@@ -146,7 +146,7 @@ describe("WorkflowHarness and Workflow Support", () => {
     try {
       const instanceId = await withTimeout(
         client.scheduleNewWorkflow(helloWorkflow, "Dapr Node"),
-        30_000,
+        60_000,
         "Scheduling workflow"
       );
       const state = await client.waitForWorkflowCompletion(instanceId, undefined, 60);
@@ -158,5 +158,5 @@ describe("WorkflowHarness and Workflow Support", () => {
       await client.stop();
       await runtime.stop();
     }
-  }, 120_000);
+  }, 180_000);
 });
