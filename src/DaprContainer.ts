@@ -291,55 +291,40 @@ export class DaprContainer extends GenericContainer {
 
     if (this.workflowEnabled) {
       const stateStoreName = this.workflowOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
-      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
-      if (!alreadyHasStateStore) {
-        const redisHost =
-          this.workflowOptions?.redisHost ??
-          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
-        const redisStateStore = RedisContainer.createStateStoreComponent({
-          name: stateStoreName,
-          redisHost,
-          actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
-        });
-        this.components.push(redisStateStore);
-      }
+      const redisHost =
+        this.workflowOptions?.redisHost ??
+        `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+      this.upsertStateStoreComponent(stateStoreName, {
+        redisHost,
+        actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
+      });
     }
 
     if (this.stateManagementEnabled) {
       const stateStoreName =
         this.stateManagementOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
-      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
-      if (!alreadyHasStateStore) {
-        const redisHost =
-          this.stateManagementOptions?.redisHost ??
-          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
-        const redisStateStore = RedisContainer.createStateStoreComponent({
-          name: stateStoreName,
-          redisHost,
-          redisPassword: this.stateManagementOptions?.redisPassword,
-          actorStateStore: this.stateManagementOptions?.enableActorStateStore ?? true,
-          keyPrefix: this.stateManagementOptions?.keyPrefix,
-        });
-        this.components.push(redisStateStore);
-      }
+      const redisHost =
+        this.stateManagementOptions?.redisHost ??
+        `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+      this.upsertStateStoreComponent(stateStoreName, {
+        redisHost,
+        redisPassword: this.stateManagementOptions?.redisPassword,
+        actorStateStore: this.stateManagementOptions?.enableActorStateStore ?? true,
+        keyPrefix: this.stateManagementOptions?.keyPrefix,
+      });
     }
 
     if (this.actorsEnabled) {
       const stateStoreName = this.actorOptions?.stateStoreName ?? DaprComponentNames.StateManagementComponentName;
-      const alreadyHasStateStore = this.components.some((c) => c.name === stateStoreName);
-      if (!alreadyHasStateStore) {
-        const redisHost =
-          this.actorOptions?.redisHost ??
-          `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
-        const redisStateStore = RedisContainer.createStateStoreComponent({
-          name: stateStoreName,
-          redisHost,
-          redisPassword: this.actorOptions?.redisPassword,
-          actorStateStore: this.actorOptions?.enableActorStateStore ?? true,
-          keyPrefix: this.actorOptions?.keyPrefix,
-        });
-        this.components.push(redisStateStore);
-      }
+      const redisHost =
+        this.actorOptions?.redisHost ??
+        `${this.redisService}:${this.redisContainer ? this.redisContainer.getPort() : REDIS_DEFAULT_PORT}`;
+      this.upsertStateStoreComponent(stateStoreName, {
+        redisHost,
+        redisPassword: this.actorOptions?.redisPassword,
+        actorStateStore: this.actorOptions?.enableActorStateStore ?? true,
+        keyPrefix: this.actorOptions?.keyPrefix,
+      });
     }
 
     const hasState = this.components.some((c) => c.type.startsWith("state."));
@@ -381,6 +366,38 @@ export class DaprContainer extends GenericContainer {
       log.info(`\t\n${DaprContainer.redactYaml(endpointYaml)}\n`);
       this.withCopyContentToContainer([{ content: endpointYaml, target: `/dapr-resources/${endpoint.name}.yaml` }]);
     }
+  }
+
+  private upsertStateStoreComponent(
+    stateStoreName: string,
+    options: {
+      redisHost?: string;
+      redisPassword?: string;
+      actorStateStore?: boolean;
+      keyPrefix?: string;
+    }
+  ): void {
+    const nextStateStore = RedisContainer.createStateStoreComponent({
+      name: stateStoreName,
+      redisHost: options.redisHost,
+      redisPassword: options.redisPassword,
+      actorStateStore: options.actorStateStore,
+      keyPrefix: options.keyPrefix,
+    });
+
+    const existingIndex = this.components.findIndex((component) => component.name === stateStoreName);
+    if (existingIndex === -1) {
+      this.components.push(nextStateStore);
+      return;
+    }
+
+    const existing = this.components[existingIndex];
+    const mergedMetadata = existing
+      .getMetadata()
+      .filter((entry) => !["redisHost", "redisPassword", "actorStateStore", "keyPrefix"].includes(entry.name))
+      .concat(nextStateStore.getMetadata());
+
+    this.components[existingIndex] = new Component(existing.name, existing.type, existing.version, mergedMetadata);
   }
 
   getAppName(): string {

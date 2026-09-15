@@ -149,6 +149,17 @@ describe("ActorHarness and Actor Support", () => {
     expect(() => harness.createActorProxy(DemoCounterActor, "test-id")).toThrow("ActorHarness has not been started.");
   });
 
+  it("should align the container app port with the server port when none was configured", () => {
+    const harness = new ActorHarness();
+
+    harness.createDaprServer({ serverPort: "8123", serverHost: "127.0.0.1" });
+
+    expect(harness.getDaprContainer().getAppPort()).toBe(8123);
+    expect(() => harness.createDaprServer({ serverPort: "8124", serverHost: "127.0.0.1" })).toThrow(
+      "ActorHarness appPort (8123) must match DaprServer serverPort (8124)."
+    );
+  });
+
   it("should run actor method invocation and state persistence end-to-end using ActorHarness", async () => {
     const appPort = 8091;
     await TestContainers.exposeHostPorts(appPort);

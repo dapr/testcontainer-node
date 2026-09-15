@@ -109,6 +109,7 @@ export class ActorHarness {
 
     // Wire up sidecar client to any servers and the ActorRuntime instance
     const sidecarClient = this.createDaprClient();
+    await sidecarClient.start();
     for (const server of this.daprServers) {
       (server as any).client = sidecarClient;
       if ((server as any).actor) {
@@ -219,7 +220,23 @@ export class ActorHarness {
   }
 
   public createDaprServer(serverOptions?: Partial<DaprServerOptions>): DaprServer {
-    const serverPort = serverOptions?.serverPort ?? (this.options.appPort ? this.options.appPort.toString() : "3001");
+    const requestedServerPort = serverOptions?.serverPort ?? (this.options.appPort ? this.options.appPort.toString() : "3001");
+    const parsedServerPort = Number.parseInt(requestedServerPort, 10);
+    if (Number.isNaN(parsedServerPort)) {
+      throw new Error(`Invalid DaprServer port: ${requestedServerPort}`);
+    }
+
+    if (this.options.appPort !== undefined && this.options.appPort !== parsedServerPort) {
+      throw new Error(
+        `ActorHarness appPort (${this.options.appPort}) must match DaprServer serverPort (${parsedServerPort}).`
+      );
+    }
+
+    if (this.options.appPort === undefined) {
+      this.options.appPort = parsedServerPort;
+      this.daprContainer.withAppPort(parsedServerPort);
+    }
+
     const serverHost = serverOptions?.serverHost ?? "127.0.0.1";
     const protocol = serverOptions?.communicationProtocol ?? CommunicationProtocolEnum.HTTP;
     const defaultDaprPort = this.startedDaprContainer
@@ -230,7 +247,7 @@ export class ActorHarness {
 
     const server = new DaprServer({
       serverHost,
-      serverPort,
+      serverPort: requestedServerPort,
       communicationProtocol: protocol,
       ...serverOptions,
       clientOptions: {
