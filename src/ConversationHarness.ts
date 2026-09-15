@@ -56,9 +56,19 @@ export type ConversationResult = {
       finishReason?: string;
       message?: {
         content?: string;
+        ofAssistant?: {
+          content?: Array<{
+            text?: string;
+          }>;
+        };
       };
     }>;
   }>;
+  contextId?: string;
+};
+
+export type ConversationResponse = {
+  content: string;
   contextId?: string;
 };
 
@@ -73,7 +83,7 @@ export class ConversationHarness {
   private daprClient?: DaprClient;
 
   constructor(private readonly options: ConversationHarnessOptions = {}) {
-    this.modelName = options.modelName ?? OLLAMA_DEFAULT_MODEL;
+    this.modelName = this.normalizeModelName(options.modelName ?? OLLAMA_DEFAULT_MODEL);
     this.conversationComponentName = options.conversationComponentName ?? DaprComponentNames.ConversationComponentName;
     this.cacheTtl = options.cacheTtl ?? "10m";
     this.daprContainer = new DaprContainer(options.daprRuntimeImage)
@@ -91,10 +101,11 @@ export class ConversationHarness {
   }
 
   public useModel(modelName: string): this {
-    if (!modelName.trim()) {
+    const normalizedModelName = modelName.trim();
+    if (!normalizedModelName) {
       throw new Error("Model name must not be empty.");
     }
-    this.modelName = modelName;
+    this.modelName = normalizedModelName;
     this.daprContainer.withConversation(this.getConversationOptions());
     return this;
   }
@@ -185,7 +196,7 @@ export class ConversationHarness {
   public async converse(
     input: string | ConversationInputMessage[],
     options: ConversationConverseOptions = {}
-  ): Promise<string> {
+  ): Promise<ConversationResponse> {
     const messages = typeof input === "string" ? [{ content: input, role: "user" as const }] : input;
     if (messages.length === 0) {
       throw new Error("At least one conversation message is required.");
@@ -223,11 +234,16 @@ export class ConversationHarness {
     }
 
     const result = (await response.json()) as ConversationResult;
-    const content = result.outputs?.[0]?.choices?.[0]?.message?.content;
+    const message = result.outputs?.[0]?.choices?.[0]?.message;
+    const content =
+      message?.content ??
+      message?.ofAssistant?.content
+        ?.map((block) => block.text ?? "")
+        .join("");
     if (content === undefined) {
       throw new Error("Conversation response did not contain message content.");
     }
-    return content;
+    return { content, contextId: result.contextId };
   }
 
   public async [Symbol.asyncDispose](): Promise<void> {
@@ -248,5 +264,13 @@ export class ConversationHarness {
 
   private getRoleField(role: ConversationRole): string {
     return `of${role[0].toUpperCase()}${role.slice(1)}`;
+  }
+
+  private normalizeModelName(modelName: string): string {
+    const normalizedModelName = modelName.trim();
+    if (!normalizedModelName) {
+      throw new Error("Model name must not be empty.");
+    }
+    return normalizedModelName;
   }
 }

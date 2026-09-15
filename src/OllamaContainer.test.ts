@@ -83,6 +83,14 @@ describe("OllamaContainer", () => {
       await expect(started.isModelAvailable(OLLAMA_DEFAULT_MODEL)).resolves.toBe(true);
     });
 
+    it("matches an untagged model to the latest tag", async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ models: [{ name: "llama3:latest" }] }),
+      } as Response);
+      await expect(started.isModelAvailable("llama3")).resolves.toBe(true);
+    });
+
     it("returns false when model discovery fails", async () => {
       globalThis.fetch = jest.fn().mockRejectedValue(new Error("unavailable"));
       await expect(started.isModelAvailable(OLLAMA_DEFAULT_MODEL)).resolves.toBe(false);

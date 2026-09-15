@@ -30,7 +30,7 @@ export class OllamaContainer extends GenericContainer {
     super(image);
     this.withEnvironment({ CUDA_VISIBLE_DEVICES: "-1" })
       .withExposedPorts(OLLAMA_DEFAULT_PORT)
-      .withWaitStrategy(Wait.forListeningPorts())
+      .withWaitStrategy(Wait.forHttp("/api/tags", OLLAMA_DEFAULT_PORT).forStatusCode(200))
       .withStartupTimeout(180_000);
   }
 
@@ -127,15 +127,20 @@ export class StartedOllamaContainer extends AbstractStartedContainer {
         return false;
       }
       const data = (await response.json()) as OllamaModelsResponse;
-      const target = model.toLowerCase();
+      const target = this.normalizeModelName(model);
       return (
         data.models?.some((entry) => {
           const names = [entry.name, entry.model].filter((value): value is string => value !== undefined);
-          return names.some((name) => name.toLowerCase() === target);
+          return names.some((name) => this.normalizeModelName(name) === target);
         }) ?? false
       );
     } catch {
       return false;
     }
+  }
+
+  private normalizeModelName(model: string): string {
+    const normalizedModel = model.trim().toLowerCase();
+    return normalizedModel.includes(":") ? normalizedModel : `${normalizedModel}:latest`;
   }
 }

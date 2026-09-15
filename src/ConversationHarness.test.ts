@@ -73,7 +73,17 @@ describe("ConversationHarness", () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        outputs: [{ choices: [{ finishReason: "stop", message: { content: "pong" } }] }],
+        contextId: "next-context",
+        outputs: [
+          {
+            choices: [
+              {
+                finishReason: "stop",
+                message: { ofAssistant: { content: [{ text: "po" }, { text: "ng" }] } },
+              },
+            ],
+          },
+        ],
       }),
     } as Response);
     globalThis.fetch = fetchMock;
@@ -91,7 +101,7 @@ describe("ConversationHarness", () => {
             parameters: { max_tokens: 5 },
           }
         )
-      ).resolves.toBe("pong");
+      ).resolves.toEqual({ content: "pong", contextId: "next-context" });
       expect(fetchMock).toHaveBeenCalledWith(
         "http://127.0.0.1:3500/v1.0-alpha2/conversation/llm/converse",
         expect.objectContaining({
@@ -152,6 +162,6 @@ describe("ConversationHarness", () => {
     expect(harness.getStartedOllamaContainer()).toBeDefined();
     expect(harness.getOllamaEndpoint()).toMatch(/^http:\/\//);
     const response = await harness.converse("Reply with exactly: pong", { temperature: 0 });
-    expect(response.trim().length).toBeGreaterThan(0);
+    expect(response.content.trim().length).toBeGreaterThan(0);
   }, 360_000);
 });

@@ -126,6 +126,13 @@ export class DaprContainer extends GenericContainer {
 
   public override async start(): Promise<StartedDaprContainer> {
     assert(this.startedNetwork, "Network must be provided before starting the container");
+    if (
+      this.conversationOptions?.ollamaPort !== undefined &&
+      !this.conversationOptions.ollamaEndpoint &&
+      !this.conversationOptions.ollamaHost
+    ) {
+      throw new Error("ollamaPort requires ollamaHost or ollamaEndpoint.");
+    }
     if (!this.placementContainer) {
       const container = new DaprPlacementContainer(this.placementImage)
         .withNetwork(this.startedNetwork)
@@ -145,9 +152,15 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer = container;
     }
 
+    const startedContainers: StartedTestContainer[] = [];
+    const startContainer = async (container: GenericContainer): Promise<StartedTestContainer> => {
+      const started = await container.start();
+      startedContainers.push(started);
+      return started;
+    };
     const startTasks: Promise<StartedTestContainer>[] = [
-      this.placementContainer.start(),
-      this.schedulerContainer.start(),
+      startContainer(this.placementContainer),
+      startContainer(this.schedulerContainer),
     ];
 
     if (this.workflowEnabled || this.redisContainer) {
@@ -166,7 +179,7 @@ export class DaprContainer extends GenericContainer {
       }
 
       if (this.redisContainer) {
-        startTasks.push(this.redisContainer.start());
+        startTasks.push(startContainer(this.redisContainer));
       }
     }
 
@@ -185,6 +198,7 @@ export class DaprContainer extends GenericContainer {
         const model = this.conversationOptions?.model ?? OLLAMA_DEFAULT_MODEL;
         startTasks.push(
           this.ollamaContainer.start().then(async (container) => {
+            startedContainers.push(container);
             await container.ensureModel(model);
             return container;
           })
@@ -192,8 +206,14 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
-    const containers = await Promise.all(startTasks);
-    return new StartedDaprContainer(await super.start(), containers);
+    try {
+      const containers = await Promise.all(startTasks);
+      return new StartedDaprContainer(await super.start(), containers);
+    } catch (error) {
+      await Promise.allSettled(startTasks);
+      await Promise.allSettled(startedContainers.map((container) => container.stop()));
+      throw error;
+    }
   }
 
   protected override async beforeContainerCreated(): Promise<void> {
@@ -514,6 +534,9 @@ export class DaprContainer extends GenericContainer {
   }
 
   withConversation(options?: ConversationOptions): this {
+    if (options?.ollamaPort !== undefined && !options.ollamaEndpoint && !options.ollamaHost) {
+      throw new Error("ollamaPort requires ollamaHost or ollamaEndpoint.");
+    }
     this.conversationEnabled = true;
     this.conversationOptions = options;
     if (options?.ollamaContainer) {
