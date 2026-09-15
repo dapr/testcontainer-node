@@ -172,7 +172,7 @@ export class DaprContainer extends GenericContainer {
       .withStartupTimeout(120_000);
   }
 
-  private static outboundHealthWaitStrategy() {
+  public static outboundHealthWaitStrategy() {
     return Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
       (statusCode) => statusCode >= 200 && statusCode <= 399
     );

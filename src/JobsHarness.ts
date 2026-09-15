@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import { Network, StartedNetwork } from "testcontainers";
+import { Network, StartedNetwork, Wait } from "testcontainers";
 import { DaprContainer, StartedDaprContainer } from "./DaprContainer";
 
 export type JobsHarnessOptions = {
@@ -88,7 +88,10 @@ export class JobsHarness {
     this.daprContainer = new DaprContainer(options.daprRuntimeImage)
       .withAppName(options.appId ?? "jobs-app")
       .withDaprLogLevel(options.daprLogLevel ?? "info")
-      .withDaprApiLoggingEnabled(options.daprApiLoggingEnabled ?? false);
+      .withDaprApiLoggingEnabled(options.daprApiLoggingEnabled ?? false)
+      .withWaitStrategy(
+        Wait.forAll([DaprContainer.outboundHealthWaitStrategy(), Wait.forLogMessage(/Scheduler clients initialized/i)])
+      );
 
     if (options.appPort) {
       this.daprContainer.withAppPort(options.appPort);
@@ -220,13 +223,28 @@ export class JobsHarness {
       init.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, init);
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new JobsApiError(
-        `Jobs API request ${method} ${path} failed with status ${response.status}: ${text}`,
-        response.status
-      );
+    const maxRetries = 3;
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        response = await fetch(url, init);
+        if (response.ok || (response.status < 500 && response.status !== 408)) {
+          return response;
+        }
+      } catch (err) {
+        if (attempt === maxRetries - 1) {
+          throw err;
+        }
+      }
+      if (attempt < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+
+    if (!response || !response.ok) {
+      const text = response ? await response.text().catch(() => "") : "";
+      const status = response ? response.status : 500;
+      throw new JobsApiError(`Jobs API request ${method} ${path} failed with status ${status}: ${text}`, status);
     }
     return response;
   }

@@ -13,7 +13,7 @@ limitations under the License.
 
 import bodyParser from "body-parser";
 import express from "express";
-import { Network, TestContainers } from "testcontainers";
+import { Network, TestContainers, Wait } from "testcontainers";
 import { DaprContainer } from "./DaprContainer";
 import { JobsApiError, JobsHarness } from "./JobsHarness";
 
@@ -159,7 +159,10 @@ describe("JobsHarness", () => {
       .withAppName("jobs-trigger-app")
       .withAppPort(appPort)
       .withDaprLogLevel("info")
-      .withAppChannelAddress("host.testcontainers.internal");
+      .withAppChannelAddress("host.testcontainers.internal")
+      .withWaitStrategy(
+        Wait.forAll([DaprContainer.outboundHealthWaitStrategy(), Wait.forLogMessage(/Scheduler clients initialized/i)])
+      );
     await using startedContainer = await dapr.start();
 
     const url = `${startedContainer.getHttpEndpoint()}/v1.0-alpha1/jobs/triggered-job`;
