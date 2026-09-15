@@ -63,7 +63,7 @@ jobs:
 
       - name: Run unit tests
         id: tests
-        run: npm test
+        run: npm test -- --runInBand
 
       - name: Check package contents
         run: npm pack --dry-run --ignore-scripts
