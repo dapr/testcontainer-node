@@ -38,6 +38,7 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import { OLLAMA_DEFAULT_MODEL, OLLAMA_DEFAULT_PORT, OllamaContainer, StartedOllamaContainer } from "./OllamaContainer";
 import {
   RABBITMQ_DEFAULT_PASSWORD,
   RABBITMQ_DEFAULT_PORT,
@@ -72,6 +73,16 @@ export type WorkflowOptions = {
   redisContainer?: RedisContainer;
   redisHost?: string;
   enableActorStateStore?: boolean;
+};
+
+export type ConversationOptions = {
+  conversationComponentName?: string;
+  model?: string;
+  cacheTtl?: string;
+  ollamaContainer?: OllamaContainer;
+  ollamaEndpoint?: string;
+  ollamaHost?: string;
+  ollamaPort?: number;
 };
 
 export type PubSubOptions = {
@@ -123,19 +134,24 @@ export class DaprContainer extends GenericContainer {
   private placementService = "placement";
   private schedulerService = "scheduler";
   private redisService = "redis";
+  private ollamaService = "ollama";
   private rabbitMQService = "rabbitmq";
   private placementImage = getDaprPlacementImage();
   private schedulerImage = getDaprSchedulerImage();
   private placementContainer?: DaprPlacementContainer;
   private schedulerContainer?: DaprSchedulerContainer;
   private redisContainer?: RedisContainer;
-  private rabbitMQContainer?: RabbitMQContainer;
+  private ollamaContainer?: OllamaContainer;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
-  private shouldReuseRabbitMQ = false;
+  private shouldReuseOllama = false;
   private workflowEnabled = false;
   private workflowOptions?: WorkflowOptions;
+  private conversationEnabled = false;
+  private conversationOptions?: ConversationOptions;
+  private rabbitMQContainer?: RabbitMQContainer;
+  private shouldReuseRabbitMQ = false;
   private pubSubEnabled = false;
   private pubSubOptions?: PubSubOptions;
   private stateManagementEnabled = false;
@@ -156,7 +172,7 @@ export class DaprContainer extends GenericContainer {
       .withStartupTimeout(120_000);
   }
 
-  private static outboundHealthWaitStrategy() {
+  public static outboundHealthWaitStrategy() {
     return Wait.forHttp("/v1.0/healthz/outbound", DAPRD_DEFAULT_HTTP_PORT).forStatusCodeMatching(
       (statusCode) => statusCode >= 200 && statusCode <= 399
     );
@@ -198,6 +214,13 @@ export class DaprContainer extends GenericContainer {
 
   public override async start(): Promise<StartedDaprContainer> {
     assert(this.startedNetwork, "Network must be provided before starting the container");
+    if (
+      this.conversationOptions?.ollamaPort !== undefined &&
+      !this.conversationOptions.ollamaEndpoint &&
+      !this.conversationOptions.ollamaHost
+    ) {
+      throw new Error("ollamaPort requires ollamaHost or ollamaEndpoint.");
+    }
     if (!this.placementContainer) {
       const container = new DaprPlacementContainer(this.placementImage)
         .withNetwork(this.startedNetwork)
@@ -217,9 +240,15 @@ export class DaprContainer extends GenericContainer {
       this.schedulerContainer = container;
     }
 
+    const startedContainers: StartedTestContainer[] = [];
+    const startContainer = async (container: GenericContainer): Promise<StartedTestContainer> => {
+      const started = await container.start();
+      startedContainers.push(started);
+      return started;
+    };
     const startTasks: Promise<StartedTestContainer>[] = [
-      this.placementContainer.start(),
-      this.schedulerContainer.start(),
+      startContainer(this.placementContainer),
+      startContainer(this.schedulerContainer),
     ];
 
     const needsSharedRedis =
@@ -243,52 +272,57 @@ export class DaprContainer extends GenericContainer {
         if (this.distributedLockEnabled && this.distributedLockOptions?.redisPassword !== undefined) {
           this.redisContainer.withPassword(this.distributedLockOptions.redisPassword);
         }
-        startTasks.push(this.redisContainer.start());
+        startTasks.push(startContainer(this.redisContainer));
+      }
+    }
+
+    if (this.conversationEnabled || this.ollamaContainer) {
+      if (!this.ollamaContainer && !this.conversationOptions?.ollamaEndpoint && !this.conversationOptions?.ollamaHost) {
+        const container = new OllamaContainer().withNetwork(this.startedNetwork).withNetworkAliases(this.ollamaService);
+        if (this.shouldReuseOllama) {
+          container.withReuse().withAutoRemove(false);
+        }
+        this.ollamaContainer = container;
+      } else if (this.ollamaContainer) {
+        this.ollamaContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.ollamaService);
+      }
+
+      if (this.ollamaContainer) {
+        const model = this.conversationOptions?.model ?? OLLAMA_DEFAULT_MODEL;
+        startTasks.push(
+          this.ollamaContainer.start().then(async (container) => {
+            startedContainers.push(container);
+            await container.ensureModel(model);
+            return container;
+          })
+        );
       }
     }
 
     if (this.pubSubEnabled || this.rabbitMQContainer) {
-      if (!this.rabbitMQContainer) {
-        // Only auto-create RabbitMQ if no external host is configured
-        if (!this.pubSubOptions?.rabbitMQHost) {
-          const container = new RabbitMQContainer()
-            .withNetwork(this.startedNetwork)
-            .withNetworkAliases(this.rabbitMQService);
-          if (this.shouldReuseRabbitMQ) {
-            container.withReuse().withAutoRemove(false);
-          }
-          this.rabbitMQContainer = container;
+      if (!this.rabbitMQContainer && !this.pubSubOptions?.rabbitMQHost) {
+        const container = new RabbitMQContainer()
+          .withNetwork(this.startedNetwork)
+          .withNetworkAliases(this.rabbitMQService);
+        if (this.shouldReuseRabbitMQ) {
+          container.withReuse().withAutoRemove(false);
         }
-      } else {
-        // Attach explicitly supplied RabbitMQ container to the network and alias
+        this.rabbitMQContainer = container;
+      } else if (this.rabbitMQContainer) {
         this.rabbitMQContainer.withNetwork(this.startedNetwork).withNetworkAliases(this.rabbitMQService);
       }
 
       if (this.rabbitMQContainer) {
-        startTasks.push(this.rabbitMQContainer.start());
+        startTasks.push(startContainer(this.rabbitMQContainer));
       }
     }
 
-    const startedContainers = await Promise.allSettled(startTasks);
-    const failedStart = startedContainers.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected"
-    );
-    if (failedStart) {
-      await Promise.allSettled(
-        startedContainers
-          .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
-          .map((result) => result.value.stop())
-      );
-      throw failedStart.reason;
-    }
-
-    const containers = startedContainers
-      .filter((result): result is PromiseFulfilledResult<StartedTestContainer> => result.status === "fulfilled")
-      .map((result) => result.value);
     try {
+      const containers = await Promise.all(startTasks);
       return new StartedDaprContainer(await super.start(), containers);
     } catch (error) {
-      await Promise.allSettled(containers.map((container) => container.stop()));
+      await Promise.allSettled(startTasks);
+      await Promise.allSettled(startedContainers.map((container) => container.stop()));
       throw error;
     }
   }
@@ -360,6 +394,26 @@ export class DaprContainer extends GenericContainer {
           actorStateStore: this.workflowOptions?.enableActorStateStore ?? true,
         });
         this.components.push(redisStateStore);
+      }
+    }
+
+    if (this.conversationEnabled) {
+      const componentName =
+        this.conversationOptions?.conversationComponentName ?? DaprComponentNames.ConversationComponentName;
+      if (!this.components.some((component) => component.name === componentName)) {
+        const endpoint =
+          this.conversationOptions?.ollamaEndpoint ??
+          `http://${this.conversationOptions?.ollamaHost ?? this.ollamaService}:${
+            this.conversationOptions?.ollamaPort ?? OLLAMA_DEFAULT_PORT
+          }/v1`;
+        this.components.push(
+          OllamaContainer.createConversationComponent({
+            name: componentName,
+            model: this.conversationOptions?.model,
+            cacheTtl: this.conversationOptions?.cacheTtl,
+            endpoint,
+          })
+        );
       }
     }
 
@@ -495,6 +549,14 @@ export class DaprContainer extends GenericContainer {
     return this.redisContainer;
   }
 
+  getOllamaService(): string {
+    return this.ollamaService;
+  }
+
+  getOllamaContainer(): OllamaContainer | undefined {
+    return this.ollamaContainer;
+  }
+
   getRabbitMQService(): string {
     return this.rabbitMQService;
   }
@@ -505,6 +567,10 @@ export class DaprContainer extends GenericContainer {
 
   isWorkflowEnabled(): boolean {
     return this.workflowEnabled;
+  }
+
+  isConversationEnabled(): boolean {
+    return this.conversationEnabled;
   }
 
   isPubSubEnabled(): boolean {
@@ -628,6 +694,16 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  withOllamaService(ollamaService: string): this {
+    this.ollamaService = ollamaService;
+    return this;
+  }
+
+  withReusableOllama(shouldReuseOllama: boolean): this {
+    this.shouldReuseOllama = shouldReuseOllama;
+    return this;
+  }
+
   withReusableRabbitMQ(shouldReuseRabbitMQ: boolean): this {
     this.shouldReuseRabbitMQ = shouldReuseRabbitMQ;
     return this;
@@ -646,6 +722,12 @@ export class DaprContainer extends GenericContainer {
   withRedisContainer(redisContainer: RedisContainer, redisService = "redis"): this {
     this.redisContainer = redisContainer;
     this.redisService = redisService;
+    return this;
+  }
+
+  withOllamaContainer(ollamaContainer: OllamaContainer, ollamaService = "ollama"): this {
+    this.ollamaContainer = ollamaContainer;
+    this.ollamaService = ollamaService;
     return this;
   }
 
@@ -699,6 +781,18 @@ export class DaprContainer extends GenericContainer {
     this.distributedLockOptions = options;
     if (options?.redisContainer) {
       this.redisContainer = options.redisContainer;
+    }
+    return this;
+  }
+
+  withConversation(options?: ConversationOptions): this {
+    if (options?.ollamaPort !== undefined && !options.ollamaEndpoint && !options.ollamaHost) {
+      throw new Error("ollamaPort requires ollamaHost or ollamaEndpoint.");
+    }
+    this.conversationEnabled = true;
+    this.conversationOptions = options;
+    if (options?.ollamaContainer) {
+      this.ollamaContainer = options.ollamaContainer;
     }
     return this;
   }
@@ -785,5 +879,11 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getContainers(): StartedTestContainer[] {
     return this.containers.slice();
+  }
+
+  getOllamaContainer(): StartedOllamaContainer | undefined {
+    return this.containers.find((container): container is StartedOllamaContainer => {
+      return container instanceof StartedOllamaContainer;
+    });
   }
 }

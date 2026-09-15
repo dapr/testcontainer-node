@@ -93,6 +93,20 @@ const state = await client.waitForWorkflowCompletion(instanceId);
 await harness.stop();
 ```
 
+## Dapr Conversation Testing
+
+`ConversationHarness` starts Dapr and a CPU-only Ollama container, pulls the small `smollm2:135m` model by default, and configures a `conversation.ollama` component:
+
+```typescript
+import { ConversationHarness } from "@dapr/testcontainer-node";
+
+await using harness = await new ConversationHarness().start();
+const response = await harness.converse("Reply with the word pong.");
+console.log(response.content, response.contextId);
+```
+
+Use `modelName`, `ollamaContainer`, or `ollamaEndpoint` in the harness options to override the defaults.
+
 ## Dapr Cryptography Testing
 
 `CryptographyHarness` configures the `crypto.dapr.localstorage` component and copies a local directory containing PEM, JWK, or raw symmetric keys into the Dapr sidecar:

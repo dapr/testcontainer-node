@@ -13,6 +13,7 @@ limitations under the License.
 
 export * from "./Component";
 export * from "./Configuration";
+export * from "./ConversationHarness";
 export * from "./Constants";
 export * from "./CryptographyHarness";
 export * from "./DaprContainer";
@@ -24,6 +25,7 @@ export * from "./HttpEndpoint";
 export * from "./LocalStorageCryptographyContainer";
 export * from "./JobsHarness";
 export * from "./MetadataEntry";
+export * from "./OllamaContainer";
 export * from "./PubSubHarness";
 export * from "./RabbitMQContainer";
 export * from "./RedisContainer";
