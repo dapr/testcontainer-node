@@ -235,11 +235,7 @@ export class ConversationHarness {
 
     const result = (await response.json()) as ConversationResult;
     const message = result.outputs?.[0]?.choices?.[0]?.message;
-    const content =
-      message?.content ??
-      message?.ofAssistant?.content
-        ?.map((block) => block.text ?? "")
-        .join("");
+    const content = message?.content ?? message?.ofAssistant?.content?.map((block) => block.text ?? "").join("");
     if (content === undefined) {
       throw new Error("Conversation response did not contain message content.");
     }
