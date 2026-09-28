@@ -35,7 +35,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  NODE_VER: 24.7.0
+  NODE_VER: 24.21.0
 
 jobs:
   build:
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Node ${{ env.NODE_VER }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VER }}
           cache: npm
