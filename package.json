@@ -1,6 +1,6 @@
 {
   "name": "@dapr/testcontainer-node",
-  "version": "0.5.2",
+  "version": "1.0.2",
   "description": "Dapr TestContainer for NodeJS",
   "keywords": [],
   "license": "Apache-2.0",
