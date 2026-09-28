@@ -1,3 +1,5 @@
+[![NPM Version](https://img.shields.io/npm/v/%40dapr%2Ftestcontainer-node?style=flat&logo=npm&label=Latest%20version)](https://www.npmjs.com/package/@dapr/testcontainer-node) [![NPM Downloads](https://img.shields.io/npm/dy/%40dapr%2Ftestcontainer-node?style=flat&logo=npm&label=Downloads)](https://www.npmjs.com/package/@dapr/testcontainer-node) [![GitHub License](https://img.shields.io/github/license/dapr/testcontainer-node?style=flat&label=License&logo=github)](https://github.com/dapr/testcontainer-node/blob/main/LICENSE) [![Discord](https://img.shields.io/discord/778680217417809931?label=Discord&style=flat&logo=discord)](http://bit.ly/dapr-discord) [![YouTube Channel Views](https://img.shields.io/youtube/channel/views/UCtpSQ9BLB_3EXdWAUQYwnRA?style=flat&label=YouTube%20views&logo=youtube)](https://youtube.com/@daprdev) [![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/daprdev?logo=x&style=flat)](https://twitter.com/daprdev)
+
 # Dapr TestContainer for NodeJS
 
 Dapr is a CNCF and open-source project that enables developers with consistent application-level APIs to develop
