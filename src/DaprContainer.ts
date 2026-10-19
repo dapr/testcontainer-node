@@ -38,6 +38,7 @@ import {
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { HttpEndpoint } from "./HttpEndpoint";
+import { MetadataEntry } from "./MetadataEntry";
 import { OLLAMA_DEFAULT_MODEL, OLLAMA_DEFAULT_PORT, OllamaContainer, StartedOllamaContainer } from "./OllamaContainer";
 import {
   RABBITMQ_DEFAULT_PASSWORD,
@@ -102,6 +103,13 @@ export type StateManagementOptions = {
   redisPassword?: string;
   enableActorStateStore?: boolean;
   keyPrefix?: string;
+};
+
+export type BinaryStoreOptions = {
+  binaryStoreName?: string;
+  prefix?: string;
+  maxSize?: string;
+  maxTotalSize?: string;
 };
 
 export type ActorOptions = {
@@ -875,6 +883,27 @@ export class DaprContainer extends GenericContainer {
   withComponent(component: Component): this {
     this.components.push(component);
     return this;
+  }
+
+  /**
+   * Adds an in-memory binary store. Requires a Dapr runtime supporting the Binary Store API (1.19+).
+   */
+  withBinaryStore(options: BinaryStoreOptions = {}): this {
+    const name = options.binaryStoreName ?? DaprComponentNames.BinaryStoreComponentName;
+    if (!name.trim() || /[/\\]/.test(name) || name === "." || name === "..") {
+      throw new Error("Binary store name must be non-empty and must not contain path separators or dot segments.");
+    }
+    if (this.components.some((component) => component.name === name)) {
+      throw new Error(`A component named "${name}" has already been registered`);
+    }
+    const metadata: MetadataEntry[] = [];
+    for (const key of ["prefix", "maxSize", "maxTotalSize"] as const) {
+      const value = options[key];
+      if (value !== undefined) {
+        metadata.push(new MetadataEntry(key, value));
+      }
+    }
+    return this.withComponent(new Component(name, "binarystore.in-memory", "v1", metadata));
   }
 
   /**
