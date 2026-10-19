@@ -15,6 +15,7 @@ import { DaprWorkflowClient, WorkflowRuntime } from "@dapr/dapr";
 import { Network, StartedNetwork } from "testcontainers";
 import { DaprComponentNames } from "./Constants";
 import { DaprContainer, StartedDaprContainer, WorkflowOptions } from "./DaprContainer";
+import { DaprTelemetryCollector } from "./DaprTelemetryCollector";
 import { RedisContainer } from "./RedisContainer";
 
 export type WorkflowHarnessOptions = {
@@ -28,6 +29,7 @@ export type WorkflowHarnessOptions = {
   redisContainer?: RedisContainer;
   redisHost?: string;
   network?: StartedNetwork;
+  telemetryCapture?: boolean;
 };
 
 /**
@@ -62,6 +64,18 @@ export class WorkflowHarness {
     if (options.appChannelAddress) {
       this.daprContainer.withAppChannelAddress(options.appChannelAddress);
     }
+    if (options.telemetryCapture) {
+      this.enableTelemetryCapture();
+    }
+  }
+
+  public enableTelemetryCapture(): this {
+    this.daprContainer.withTelemetryCapture();
+    return this;
+  }
+
+  public getTelemetryCollector(): DaprTelemetryCollector | undefined {
+    return this.daprContainer.getTelemetryCollector();
   }
 
   public getDaprContainer(): DaprContainer {
@@ -78,7 +92,15 @@ export class WorkflowHarness {
     }
 
     this.daprContainer.withNetwork(this.network);
-    this.startedDaprContainer = await this.daprContainer.start();
+    try {
+      this.startedDaprContainer = await this.daprContainer.start();
+    } catch (error) {
+      if (this.ownsNetwork) {
+        await this.network.stop();
+        this.network = undefined;
+      }
+      throw error;
+    }
     return this;
   }
 

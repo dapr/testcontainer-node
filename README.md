@@ -121,6 +121,58 @@ const state = await client.waitForWorkflowCompletion(instanceId);
 await harness.stop();
 ```
 
+### Capturing workflow traces
+
+Enable runtime telemetry capture before starting the harness:
+
+```typescript
+const harness = new WorkflowHarness().enableTelemetryCapture();
+try {
+  await harness.start();
+  const runtime = harness.createWorkflowRuntime();
+  runtime.registerWorkflow(myWorkflow);
+  runtime.registerActivity(myActivity);
+  await runtime.start();
+
+  const client = harness.createWorkflowClient();
+  const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
+  await client.waitForWorkflowCompletion(instanceId);
+
+  const telemetry = harness.getTelemetryCollector()!;
+  const workflowSpan = await telemetry.waitForZipkinSpan((span) => span.name === "orchestration||myworkflow", 30_000);
+  const activitySpan = await telemetry.waitForZipkinSpan(
+    (span) => span.name === "activity||myactivity" && span.traceId === workflowSpan.traceId,
+    30_000
+  );
+  console.log(workflowSpan.traceId, activitySpan.parentId);
+  console.log(telemetry.getZipkinSpans());
+} finally {
+  await harness.stop();
+}
+```
+
+Alternatively, pass `{ telemetryCapture: true }` to `WorkflowHarness`, or use
+`new DaprContainer().withNetwork(network).withTelemetryCapture()` for any Dapr building block.
+Both the builder and started container expose `getTelemetryCollector()` (undefined when capture is disabled).
+
+Like the .NET testcontainer, `DaprTelemetryCollector` receives Dapr's OpenTelemetry-generated runtime spans
+through the **Zipkin v2 JSON exporter**, not OTLP. Capture is opt-in and sets sampling to `"1"`, replacing any
+configured Zipkin endpoint while preserving other configuration, including OTLP export and actor features.
+The receiver binds an available host port, makes it reachable through Testcontainers host-port forwarding,
+and stops with the sidecar, including when startup fails. No external tracing backend is needed.
+
+`getZipkinSpans()` returns independent snapshots with trace/span/parent IDs, names, kinds, endpoint metadata,
+tags, and microsecond timestamps/durations. Export is asynchronous, so use `waitForZipkinSpan(predicate, timeoutMs, signal?)`
+rather than inspecting immediately after a workflow finishes. Waits support `AbortSignal` cancellation and report
+captured span details on timeout. Zipkin exports span names in lowercase; workflow and activity names above
+correspond to functions named `myWorkflow` and `myActivity`. Filter by trace ID or instance tags when running multiple workflows.
+Snapshots remain available after shutdown; collection is in-memory and intended for bounded test runs.
+
+The collector can also be started independently with `await new DaprTelemetryCollector().start()` and disposed
+with `stop()` or `await using`. Its local endpoint is available via `getZipkinEndpointAddress()`.
+This captures **runtime-exported spans only**; it does not install a Node OpenTelemetry provider or emulate
+the .NET SDK's in-process `ActivitySource` listener.
+
 ## Dapr Actor Testing
 
 You can use `ActorHarness` or `.withActors()` on `DaprContainer` to test Dapr Actors backed by the Redis actor state store, placement service, and scheduler service:
