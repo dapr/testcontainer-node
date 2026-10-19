@@ -88,6 +88,7 @@ describe("WorkflowHarness and Workflow Support", () => {
       appId: "workflow-test-app",
       daprLogLevel: "info",
       network,
+      telemetryCapture: true,
     });
 
     try {
@@ -111,6 +112,21 @@ describe("WorkflowHarness and Workflow Support", () => {
       expect(state).toBeDefined();
       expect(state?.runtimeStatus).toBe(WorkflowRuntimeStatus.COMPLETED);
       expect(state?.serializedOutput).toBe(JSON.stringify("Hello, World!"));
+
+      const collector = harness.getTelemetryCollector()!;
+      const workflowSpan = await collector.waitForZipkinSpan(
+        (span) => span.name === "orchestration||helloworkflow",
+        30_000
+      );
+      const activitySpan = await collector.waitForZipkinSpan(
+        (span) => span.name === "activity||helloactivity" && span.traceId === workflowSpan.traceId,
+        30_000
+      );
+      expect(workflowSpan.traceId).toMatch(/^[0-9a-f]{32}$/);
+      expect(activitySpan.id).not.toBe(workflowSpan.id);
+      expect(activitySpan.parentId).toBe(workflowSpan.id);
+      expect(workflowSpan.duration).toBeGreaterThan(0);
+      expect(activitySpan.duration).toBeGreaterThan(0);
     } finally {
       await harness.stop();
     }

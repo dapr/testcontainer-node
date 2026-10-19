@@ -22,10 +22,11 @@ import {
   StartedTestContainer,
   StopOptions,
   StoppedTestContainer,
+  TestContainers,
   Wait,
 } from "testcontainers";
 import { Component } from "./Component";
-import { Configuration } from "./Configuration";
+import { Configuration, TracingConfigurationSettings, ZipkinTracingConfigurationSettings } from "./Configuration";
 import {
   DAPR_RUNTIME_VERSION_ENV_VAR,
   DaprComponentNames,
@@ -37,6 +38,7 @@ import {
 } from "./Constants";
 import { DaprPlacementContainer } from "./DaprPlacementContainer";
 import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
+import { DaprTelemetryCollector } from "./DaprTelemetryCollector";
 import { HttpEndpoint } from "./HttpEndpoint";
 import { MetadataEntry } from "./MetadataEntry";
 import { OLLAMA_DEFAULT_MODEL, OLLAMA_DEFAULT_PORT, OllamaContainer, StartedOllamaContainer } from "./OllamaContainer";
@@ -180,6 +182,8 @@ export class DaprContainer extends GenericContainer {
   private distributedLockOptions?: DistributedLockOptions;
   private startedNetwork?: StartedNetwork;
   private configuration?: Configuration;
+  private telemetryCollector?: DaprTelemetryCollector;
+  private telemetryConfigurationLocked = false;
   private components: Component[] = [];
   private subscriptions: Subscription[] = [];
   private httpEndpoints: HttpEndpoint[] = [];
@@ -339,12 +343,19 @@ export class DaprContainer extends GenericContainer {
       }
     }
 
+    this.telemetryConfigurationLocked = true;
     try {
       const containers = await Promise.all(startTasks);
-      return new StartedDaprContainer(await super.start(), containers);
+      if (this.telemetryCollector) {
+        await this.telemetryCollector.start();
+        await TestContainers.exposeHostPorts(this.telemetryCollector.getPort());
+      }
+      return new StartedDaprContainer(await super.start(), containers, this.telemetryCollector);
     } catch (error) {
       await Promise.allSettled(startTasks);
       await Promise.allSettled(startedContainers.map((container) => container.stop()));
+      await this.telemetryCollector?.stop();
+      this.telemetryConfigurationLocked = false;
       throw error;
     }
   }
@@ -360,6 +371,20 @@ export class DaprContainer extends GenericContainer {
         ]);
       }
     }
+
+    const configuration = this.telemetryCollector
+      ? new Configuration(
+          this.configuration?.name ?? "telemetry",
+          new TracingConfigurationSettings(
+            "1",
+            this.configuration?.tracing?.stdout,
+            this.configuration?.tracing?.otel,
+            new ZipkinTracingConfigurationSettings(this.telemetryCollector.getZipkinEndpointAddressForDapr())
+          ),
+          this.configuration?.appHttpPipeline,
+          this.configuration?.features
+        )
+      : this.configuration;
 
     const cmds = [
       "./daprd",
@@ -394,8 +419,8 @@ export class DaprContainer extends GenericContainer {
       cmds.push("--enable-api-logging");
     }
 
-    if (this.configuration) {
-      cmds.push("--config", `/dapr-resources/${this.configuration.name}.yaml`);
+    if (configuration) {
+      cmds.push("--config", `/dapr-resources/${configuration.name}.yaml`);
     }
 
     log.info("> `daprd` Command: \n");
@@ -403,12 +428,12 @@ export class DaprContainer extends GenericContainer {
 
     this.withCommand(cmds);
 
-    if (this.configuration) {
-      const configurationYaml = this.configuration.toYaml();
+    if (configuration) {
+      const configurationYaml = configuration.toYaml();
       log.info("> Configuration YAML: \n");
       log.info(`\t\n${DaprContainer.redactYaml(configurationYaml)}\n`);
       this.withCopyContentToContainer([
-        { content: configurationYaml, target: `/dapr-resources/${this.configuration.name}.yaml` },
+        { content: configurationYaml, target: `/dapr-resources/${configuration.name}.yaml` },
       ]);
     }
 
@@ -703,6 +728,21 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  /** Captures runtime spans with 100% sampling. Must be enabled before start(). */
+  withTelemetryCapture(): this {
+    if (!this.telemetryCollector) {
+      if (this.telemetryConfigurationLocked) {
+        throw new Error("Telemetry capture must be enabled before starting DaprContainer.");
+      }
+      this.telemetryCollector = new DaprTelemetryCollector();
+    }
+    return this;
+  }
+
+  getTelemetryCollector(): DaprTelemetryCollector | undefined {
+    return this.telemetryCollector;
+  }
+
   withPlacementService(placementService: string): this {
     this.placementService = placementService;
     return this;
@@ -949,15 +989,24 @@ export class DaprContainer extends GenericContainer {
 export class StartedDaprContainer extends AbstractStartedContainer {
   constructor(
     startedTestContainer: StartedTestContainer,
-    private readonly containers: StartedTestContainer[]
+    private readonly containers: StartedTestContainer[],
+    private readonly telemetryCollector?: DaprTelemetryCollector
   ) {
     super(startedTestContainer);
   }
 
   async stop(options?: Partial<StopOptions>): Promise<StoppedTestContainer> {
-    const stoppedTestContainer = await super.stop(options);
-    await Promise.all(this.containers.map((container) => container.stop(options)));
-    return stoppedTestContainer;
+    try {
+      const stoppedTestContainer = await super.stop(options);
+      await Promise.all(this.containers.map((container) => container.stop(options)));
+      return stoppedTestContainer;
+    } finally {
+      await this.telemetryCollector?.stop();
+    }
+  }
+
+  getTelemetryCollector(): DaprTelemetryCollector | undefined {
+    return this.telemetryCollector;
   }
 
   getHost(): string {
