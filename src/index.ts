@@ -12,6 +12,7 @@ limitations under the License.
 */
 
 export * from "./ActorHarness";
+export * from "./BinaryStoreHarness";
 export * from "./Component";
 export * from "./Configuration";
 export * from "./ConversationHarness";

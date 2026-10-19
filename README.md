@@ -72,6 +72,32 @@ const state = await client.state.get(storeName, "my-key");
 await harness.stop();
 ```
 
+## Dapr Binary Store Testing
+
+`BinaryStoreHarness` or `.withBinaryStore()` on `DaprContainer` configures a `binarystore.in-memory` component.
+The Binary Store API requires Dapr 1.19 or a supporting prerelease (such as `1.19.0-rc.4`); the library's default
+`1.18.4` runtime does not support it. Set `DAPR_RUNTIME_VERSION` to a supporting version or pass `daprRuntimeImage`:
+
+```typescript
+import { BinaryStoreHarness } from "@dapr/testcontainer-node";
+
+await using harness = await new BinaryStoreHarness({
+  daprRuntimeImage: "daprio/daprd:1.19.0-rc.4",
+  binaryStoreName: "files",
+}).start();
+
+await harness.setBinaryFile("example.bin", Buffer.from([0, 128, 255]));
+const data = await harness.getBinaryFile("example.bin"); // Buffer
+await harness.deleteBinaryFile("example.bin");
+```
+
+The helpers use the `v1.0-alpha1` HTTP API because the Node SDK does not yet expose Binary Store operations.
+`setBinaryFile` overwrites existing files by default; pass `false` as its third argument to reject duplicates.
+Missing files and failed requests throw errors containing the HTTP status and response body.
+Optional `prefix`, `maxSize`, and `maxTotalSize` settings are passed to the in-memory component.
+The store needs no external storage service; data is local to the sidecar and is lost when it stops.
+See `src/BinaryStoreHarness.test.ts` for configuration and integration examples.
+
 ## Dapr Workflow Testing
 
 You can use `WorkflowHarness` or `.withWorkflow()` on `DaprContainer` to test Dapr Workflows with an automated Redis actor state store, placement service, and scheduler service:
