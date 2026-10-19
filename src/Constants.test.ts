@@ -57,6 +57,7 @@ describe("Constants", () => {
 
   it("should define standard component names", () => {
     expect(DaprComponentNames.StateManagementComponentName).toBe("statestore");
+    expect(DaprComponentNames.BinaryStoreComponentName).toBe("binarystore");
     expect(DaprComponentNames.PubSubComponentName).toBe("pubsub");
     expect(DaprComponentNames.ConversationComponentName).toBe("conversation");
     expect(DaprComponentNames.CryptographyComponentName).toBe("cryptography");
