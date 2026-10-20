@@ -123,6 +123,10 @@ export type SearchOptions = {
   timeout?: string;
 };
 
+export type VectorOptions = Omit<SearchOptions, "searchStoreName"> & {
+  vectorStoreName?: string;
+};
+
 export type ActorOptions = {
   stateStoreName?: string;
   redisContainer?: RedisContainer;
@@ -173,6 +177,7 @@ export class DaprContainer extends GenericContainer {
   private ollamaContainer?: OllamaContainer;
   private meilisearchContainer?: MeilisearchContainer;
   private searchEnabled = false;
+  private vectorEnabled = false;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
@@ -943,28 +948,60 @@ export class DaprContainer extends GenericContainer {
     if (this.searchEnabled) {
       throw new Error("Search has already been configured on this DaprContainer.");
     }
+    this.withMeilisearchComponent("search", options.searchStoreName ?? DaprComponentNames.SearchComponentName, options);
+    this.searchEnabled = true;
+    return this;
+  }
+
+  /** Requires a runtime image containing the alpha Vector API and vector.meilisearch component. */
+  withVector(options: VectorOptions = {}): this {
+    if (this.vectorEnabled) {
+      throw new Error("Vector has already been configured on this DaprContainer.");
+    }
+    this.withMeilisearchComponent("vector", options.vectorStoreName ?? DaprComponentNames.VectorComponentName, options);
+    this.vectorEnabled = true;
+    return this;
+  }
+
+  private withMeilisearchComponent(
+    kind: "search" | "vector",
+    name: string,
+    options: Omit<SearchOptions, "searchStoreName">
+  ): void {
     if (options.meilisearchContainer && options.meilisearchHost) {
       throw new Error("Specify either meilisearchContainer or meilisearchHost, not both.");
     }
-    const name = options.searchStoreName ?? DaprComponentNames.SearchComponentName;
     if (this.components.some((component) => component.name === name)) {
       throw new Error(`A component named "${name}" has already been registered`);
     }
     const container = options.meilisearchHost
       ? undefined
-      : (options.meilisearchContainer ?? new MeilisearchContainer());
-    if (container && options.apiKey !== undefined) {
-      container.withApiKey(options.apiKey);
+      : (options.meilisearchContainer ?? this.meilisearchContainer ?? new MeilisearchContainer());
+    if (container && this.meilisearchContainer) {
+      if (container !== this.meilisearchContainer) {
+        throw new Error("Search and Vector must share the same managed Meilisearch container.");
+      }
+      if (options.apiKey !== undefined && options.apiKey !== container.getApiKey()) {
+        throw new Error("Search and Vector must use the same API key for their shared Meilisearch container.");
+      }
     }
-    const component = MeilisearchContainer.createSearchComponent({
+    const componentOptions = {
       name,
       host: options.meilisearchHost ?? `http://meilisearch:${container?.getPort() ?? MEILISEARCH_DEFAULT_PORT}`,
       apiKey: options.apiKey ?? container?.getApiKey(),
       timeout: options.timeout,
-    });
-    this.meilisearchContainer = container;
-    this.searchEnabled = true;
-    return this.withComponent(component);
+    };
+    const component =
+      kind === "search"
+        ? MeilisearchContainer.createSearchComponent(componentOptions)
+        : MeilisearchContainer.createVectorComponent(componentOptions);
+    if (container) {
+      if (options.apiKey !== undefined) {
+        container.withApiKey(options.apiKey);
+      }
+      this.meilisearchContainer = container;
+    }
+    this.withComponent(component);
   }
 
   getMeilisearchContainer(): MeilisearchContainer | undefined {

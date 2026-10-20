@@ -39,4 +39,6 @@ export * from "./SecretStore";
 export * from "./SecretStoreHarness";
 export * from "./StateManagementHarness";
 export * from "./Subscription";
+export * from "./VectorHarness";
+export * from "./VectorTypes";
 export * from "./WorkflowHarness";

@@ -50,6 +50,33 @@ describe("MeilisearchContainer", () => {
     ]);
   });
 
+  it("creates vector components using the same provider credentials and metadata", () => {
+    const container = new MeilisearchContainer().withApiKey("test-master-key-1234");
+    const component = container.createVectorComponent();
+    expect(component).toMatchObject({ name: "vector", type: "vector.meilisearch", version: "v1" });
+    expect(component.getMetadata()).toEqual(container.createSearchComponent().getMetadata());
+    expect(
+      container
+        .createVectorComponent({
+          name: "embeddings",
+          host: "https://custom:7700",
+          apiKey: "override-key",
+          timeout: "20s",
+        })
+        .getMetadata()
+    ).toEqual([
+      { name: "host", value: "https://custom:7700" },
+      { name: "apiKey", value: "override-key" },
+      { name: "timeout", value: "20s" },
+    ]);
+    expect(MeilisearchContainer.createVectorComponent().getMetadata()).toEqual([
+      { name: "host", value: "http://localhost:7700" },
+      { name: "apiKey", value: "" },
+    ]);
+    expect(() => MeilisearchContainer.createVectorComponent({ name: "../bad" })).toThrow("Vector store name");
+    expect(() => MeilisearchContainer.createVectorComponent({ host: "redis://localhost" })).toThrow("HTTP or HTTPS");
+  });
+
   it("starts an authenticated Meilisearch server", async () => {
     await using started = await new MeilisearchContainer().start();
     expect((await fetch(`${started.getHttpEndpoint()}/health`)).status).toBe(200);
