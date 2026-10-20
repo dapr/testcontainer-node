@@ -69,6 +69,7 @@ export function getDaprSchedulerImage(version: string = getDaprVersion()): strin
 export const DaprComponentNames = {
   StateManagementComponentName: "statestore",
   BinaryStoreComponentName: "binarystore",
+  SearchComponentName: "search",
   PubSubComponentName: "pubsub",
   ConversationComponentName: "conversation",
   CryptographyComponentName: "cryptography",
