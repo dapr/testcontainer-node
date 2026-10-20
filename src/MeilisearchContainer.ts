@@ -66,9 +66,29 @@ export class MeilisearchContainer extends GenericContainer {
   }
 
   public static createSearchComponent(options: MeilisearchStoreOptions = {}): Component {
-    const name = options.name ?? DaprComponentNames.SearchComponentName;
+    return MeilisearchContainer.createComponent("search", options);
+  }
+
+  public createVectorComponent(options: MeilisearchStoreOptions = {}): Component {
+    return MeilisearchContainer.createVectorComponent({
+      ...options,
+      host: options.host ?? `http://meilisearch:${this.getPort()}`,
+      apiKey: options.apiKey ?? this.apiKey,
+    });
+  }
+
+  public static createVectorComponent(options: MeilisearchStoreOptions = {}): Component {
+    return MeilisearchContainer.createComponent("vector", options);
+  }
+
+  private static createComponent(kind: "search" | "vector", options: MeilisearchStoreOptions): Component {
+    const name =
+      options.name ??
+      (kind === "search" ? DaprComponentNames.SearchComponentName : DaprComponentNames.VectorComponentName);
     if (!name.trim() || /[/\\]/.test(name) || name === "." || name === "..") {
-      throw new Error("Search store name must be non-empty and must not contain path separators or dot segments.");
+      throw new Error(
+        `${kind === "search" ? "Search" : "Vector"} store name must be non-empty and must not contain path separators or dot segments.`
+      );
     }
     const host = options.host ?? `http://localhost:${MEILISEARCH_DEFAULT_PORT}`;
     const url = new URL(host);
@@ -82,7 +102,7 @@ export class MeilisearchContainer extends GenericContainer {
     if (options.timeout !== undefined) {
       metadata.push({ name: "timeout", value: options.timeout });
     }
-    return new Component(name, "search.meilisearch", "v1", metadata);
+    return new Component(name, `${kind}.meilisearch`, "v1", metadata);
   }
 
   public override async start(): Promise<StartedMeilisearchContainer> {

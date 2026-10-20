@@ -98,6 +98,99 @@ Optional `prefix`, `maxSize`, and `maxTotalSize` settings are passed to the in-m
 The store needs no external storage service; data is local to the sidecar and is lost when it stops.
 See `src/BinaryStoreHarness.test.ts` for configuration and integration examples.
 
+## Dapr Vector Testing
+
+`VectorHarness` or `.withVector()` on `DaprContainer` provisions a `vector.meilisearch` component using
+the same authenticated `MeilisearchContainer` as Search. The alpha Vector API was merged for Dapr 1.19;
+the default `1.18.4` runtime does not support it. Set `DAPR_RUNTIME_VERSION` or `daprRuntimeImage` to an
+image containing both the Vector API and the Meilisearch component. Not every 1.19 prerelease contains them.
+
+```typescript
+import { VectorHarness } from "@dapr/testcontainer-node";
+
+// Set DAPR_RUNTIME_VERSION to a supporting RC/development tag before running.
+await using harness = await new VectorHarness().start();
+await harness.createCollection("books", 3, { metric: "DISTANCE_METRIC_COSINE" });
+
+const result = await harness.upsertVectors(
+  "books",
+  [
+    {
+      id: "guide",
+      values: [1, 0, 0],
+      payload: Buffer.from("Dapr guide"),
+      metadata: { category: "guide", year: 2026 },
+    },
+  ],
+  {
+    options: {
+      mode: "INDEXING_MODE_WAIT_FOR_COMPLETION",
+      waitTimeout: "10s",
+      onWaitTimeout: "INDEXING_WAIT_TIMEOUT_ACTION_FAIL_REQUEST",
+    },
+  }
+);
+if (result.failedItems.length) {
+  throw new Error(JSON.stringify(result.failedItems));
+}
+
+const nearest = await harness.queryVectors("books", {
+  vector: { values: [1, 0, 0] },
+  filter: { category: { $eq: "guide" } },
+  topK: 5,
+  includePayload: true,
+  scoreThreshold: 0.9,
+});
+console.log(nearest.matches.map((match) => [match.record.id, match.score]));
+```
+
+The helpers implement all nine operations from the
+[Vector proto](https://github.com/dapr/dapr/blob/master/dapr/proto/runtime/v1/vector.proto) over
+`v1.0-alpha1` HTTP, without requiring Vector bindings in the Node SDK: collection creation/retrieval/listing/deletion,
+vector upsert/retrieval/deletion, nearest-neighbor queries, and batch queries. Embedding generation is out
+of scope: supply precomputed dense vectors matching the collection's dimensions.
+
+Use either `vector: { values: [...] }` or `byId: "guide"` in a query. Meilisearch's by-ID similarity
+query excludes the source record from its results. `getVectors` returns found records in
+request order, omitting missing IDs; pass `includeValues: true` to retrieve embeddings. Queries omit
+values and payloads by default; opt in with `includeValues` and `includePayload`. Payloads are opaque
+`Buffer` bytes, base64-encoded on the wire, while record metadata is structured JSON addressed directly
+by portable filters. Request/component metadata is a separate string-valued map. `recordCount` remains
+a protobuf JSON string to preserve uint64 precision.
+
+Meilisearch supports cosine similarity only (also selected by the unspecified metric), with higher scores
+indicating closer matches; other metrics are rejected by the provider. `scoreThreshold` is inclusive.
+`batchQueryVectors` preserves request order and returns a `response` or canonical RPC `error` per query;
+check each result rather than assuming that an HTTP success means every query succeeded.
+
+Upserts and deletes default to return-on-acceptance (`INDEX_ACK_QUEUED`), not immediate visibility.
+Use the explicit wait options above for deterministic assertions and check upsert `failedItems`.
+HTTP failures throw with the status and response body. Wait timeouts must be positive and shorter
+than applicable request/resiliency deadlines.
+
+Customize provisioning with `vectorStoreName`, `meilisearchContainer`, `apiKey`, or `timeout` (a Go
+duration). Alternatively, set `meilisearchHost` to an external URL reachable **from the sidecar** and
+provide its `apiKey`; do not combine this with `meilisearchContainer`. Managed providers use
+`getmeili/meilisearch:v1.37.0` with a random master key and analytics disabled. The harness stops managed
+containers and its own network; caller-supplied networks and external providers remain running.
+`getStartedDaprContainer().getMeilisearchContainer()` exposes the managed provider endpoint and key.
+
+`.withSearch().withVector()` (in either order) shares one managed Meilisearch container and API key.
+Conflicting explicit containers or keys are rejected. External and managed providers may also be
+combined. Search indexes and Vector collections share Meilisearch's index namespace, so use distinct
+names when using both building blocks on one provider.
+
+The Docker integration suite is opt-in with an image known to support Vector:
+
+```powershell
+$env:DAPR_VECTOR_RUNTIME_IMAGE = "daprio/daprd:edge" # Or a supporting RC/release image
+npm test -- --runInBand --runTestsByPath src\VectorHarness.test.ts src\MeilisearchContainer.test.ts
+```
+
+`edge` is a moving development tag. `DAPR_VECTOR_RUNTIME_IMAGE` selects the sidecar for these tests only;
+without it, Vector integration tests are skipped but unit tests still run. An explicitly selected
+unsupported image fails rather than silently skipping.
+
 ## Dapr Search Testing
 
 `SearchHarness` or `.withSearch()` on `DaprContainer` provisions a `search.meilisearch` component and an

@@ -70,6 +70,7 @@ export const DaprComponentNames = {
   StateManagementComponentName: "statestore",
   BinaryStoreComponentName: "binarystore",
   SearchComponentName: "search",
+  VectorComponentName: "vector",
   PubSubComponentName: "pubsub",
   ConversationComponentName: "conversation",
   CryptographyComponentName: "cryptography",
