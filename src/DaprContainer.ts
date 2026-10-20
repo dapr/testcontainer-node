@@ -41,6 +41,7 @@ import { DaprSchedulerContainer } from "./DaprSchedulerContainer";
 import { DaprTelemetryCollector } from "./DaprTelemetryCollector";
 import { HttpEndpoint } from "./HttpEndpoint";
 import { MetadataEntry } from "./MetadataEntry";
+import { MEILISEARCH_DEFAULT_PORT, MeilisearchContainer, StartedMeilisearchContainer } from "./MeilisearchContainer";
 import { OLLAMA_DEFAULT_MODEL, OLLAMA_DEFAULT_PORT, OllamaContainer, StartedOllamaContainer } from "./OllamaContainer";
 import {
   RABBITMQ_DEFAULT_PASSWORD,
@@ -114,6 +115,14 @@ export type BinaryStoreOptions = {
   maxTotalSize?: string;
 };
 
+export type SearchOptions = {
+  searchStoreName?: string;
+  meilisearchContainer?: MeilisearchContainer;
+  meilisearchHost?: string;
+  apiKey?: string;
+  timeout?: string;
+};
+
 export type ActorOptions = {
   stateStoreName?: string;
   redisContainer?: RedisContainer;
@@ -162,6 +171,8 @@ export class DaprContainer extends GenericContainer {
   private schedulerContainer?: DaprSchedulerContainer;
   private redisContainer?: RedisContainer;
   private ollamaContainer?: OllamaContainer;
+  private meilisearchContainer?: MeilisearchContainer;
+  private searchEnabled = false;
   private shouldReusePlacement = false;
   private shouldReuseScheduler = false;
   private shouldReuseRedis = false;
@@ -246,24 +257,21 @@ export class DaprContainer extends GenericContainer {
       throw new Error("ollamaPort requires ollamaHost or ollamaEndpoint.");
     }
     if (!this.placementContainer) {
-      const container = new DaprPlacementContainer(this.placementImage)
-        .withNetwork(this.startedNetwork)
-        .withNetworkAliases(this.placementService);
+      const container = new DaprPlacementContainer(this.placementImage).withNetworkAliases(this.placementService);
       if (this.shouldReusePlacement) {
         container.withReuse().withAutoRemove(false);
       }
       this.placementContainer = container;
     }
     if (!this.schedulerContainer) {
-      const container = new DaprSchedulerContainer(this.schedulerImage)
-        .withNetwork(this.startedNetwork)
-        .withNetworkAliases(this.schedulerService);
+      const container = new DaprSchedulerContainer(this.schedulerImage).withNetworkAliases(this.schedulerService);
       if (this.shouldReuseScheduler) {
         container.withReuse().withAutoRemove(false);
       }
       this.schedulerContainer = container;
     }
-    this.schedulerContainer.withBroadcastHost(this.schedulerService);
+    this.placementContainer.withNetwork(this.startedNetwork);
+    this.schedulerContainer.withNetwork(this.startedNetwork).withBroadcastHost(this.schedulerService);
 
     const startedContainers: StartedTestContainer[] = [];
     const startContainer = async (container: GenericContainer): Promise<StartedTestContainer> => {
@@ -341,6 +349,11 @@ export class DaprContainer extends GenericContainer {
       if (this.rabbitMQContainer) {
         startTasks.push(startContainer(this.rabbitMQContainer));
       }
+    }
+
+    if (this.meilisearchContainer) {
+      this.meilisearchContainer.withNetwork(this.startedNetwork).withNetworkAliases("meilisearch");
+      startTasks.push(startContainer(this.meilisearchContainer));
     }
 
     this.telemetryConfigurationLocked = true;
@@ -925,6 +938,39 @@ export class DaprContainer extends GenericContainer {
     return this;
   }
 
+  /** Requires a runtime image containing the alpha Search API and search.meilisearch component. */
+  withSearch(options: SearchOptions = {}): this {
+    if (this.searchEnabled) {
+      throw new Error("Search has already been configured on this DaprContainer.");
+    }
+    if (options.meilisearchContainer && options.meilisearchHost) {
+      throw new Error("Specify either meilisearchContainer or meilisearchHost, not both.");
+    }
+    const name = options.searchStoreName ?? DaprComponentNames.SearchComponentName;
+    if (this.components.some((component) => component.name === name)) {
+      throw new Error(`A component named "${name}" has already been registered`);
+    }
+    const container = options.meilisearchHost
+      ? undefined
+      : (options.meilisearchContainer ?? new MeilisearchContainer());
+    if (container && options.apiKey !== undefined) {
+      container.withApiKey(options.apiKey);
+    }
+    const component = MeilisearchContainer.createSearchComponent({
+      name,
+      host: options.meilisearchHost ?? `http://meilisearch:${container?.getPort() ?? MEILISEARCH_DEFAULT_PORT}`,
+      apiKey: options.apiKey ?? container?.getApiKey(),
+      timeout: options.timeout,
+    });
+    this.meilisearchContainer = container;
+    this.searchEnabled = true;
+    return this.withComponent(component);
+  }
+
+  getMeilisearchContainer(): MeilisearchContainer | undefined {
+    return this.meilisearchContainer;
+  }
+
   /**
    * Adds an in-memory binary store. Requires a Dapr runtime supporting the Binary Store API (1.19+).
    */
@@ -1032,6 +1078,12 @@ export class StartedDaprContainer extends AbstractStartedContainer {
 
   getContainers(): StartedTestContainer[] {
     return this.containers.slice();
+  }
+
+  getMeilisearchContainer(): StartedMeilisearchContainer | undefined {
+    return this.containers.find((container): container is StartedMeilisearchContainer => {
+      return container instanceof StartedMeilisearchContainer;
+    });
   }
 
   getOllamaContainer(): StartedOllamaContainer | undefined {

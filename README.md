@@ -98,6 +98,83 @@ Optional `prefix`, `maxSize`, and `maxTotalSize` settings are passed to the in-m
 The store needs no external storage service; data is local to the sidecar and is lost when it stops.
 See `src/BinaryStoreHarness.test.ts` for configuration and integration examples.
 
+## Dapr Search Testing
+
+`SearchHarness` or `.withSearch()` on `DaprContainer` provisions a `search.meilisearch` component and an
+authenticated Meilisearch container. Search is an upcoming alpha building block: the default `1.18.4`
+runtime does not support it. Select an RC or development image that includes **both** the Search API and
+the Meilisearch component using `daprRuntimeImage` or `DAPR_RUNTIME_VERSION`. No unreleased RC tag is assumed.
+
+```typescript
+import { SearchHarness } from "@dapr/testcontainer-node";
+
+// Set DAPR_RUNTIME_VERSION to a supporting RC/development tag before running.
+await using harness = await new SearchHarness().start();
+await harness.createIndex("books", {
+  searchableAttributes: "title",
+  filterableAttributes: "category",
+  sortableAttributes: "price",
+});
+
+const result = await harness.indexDocuments(
+  "books",
+  [{ id: "one", content: Buffer.from(JSON.stringify({ title: "Dapr guide", category: "guide", price: 10 })) }],
+  {
+    options: {
+      mode: "INDEXING_MODE_WAIT_FOR_COMPLETION",
+      waitTimeout: "10s",
+      onWaitTimeout: "INDEXING_WAIT_TIMEOUT_ACTION_FAIL_REQUEST",
+    },
+  }
+);
+if (result.failedItems.length) {
+  throw new Error(JSON.stringify(result.failedItems));
+}
+
+const page = await harness.search("books", {
+  text: "Dapr",
+  filter: { category: { $eq: "guide" } },
+  includeContent: true,
+  topK: 10,
+});
+console.log(page.hits.map((hit) => JSON.parse(hit.document.content.toString("utf8"))));
+```
+
+The helpers follow the [Search proto](https://github.com/dapr/dapr/blob/master/dapr/proto/runtime/v1/search.proto)
+through the `v1.0-alpha1` HTTP API; the Node SDK does not yet expose these operations.
+They cover index creation/listing/retrieval/deletion, document indexing/retrieval/deletion, and search
+(portable filters, native queries, sorting, projection, highlighting, and continuation tokens).
+Document content is a `Buffer` containing UTF-8 JSON object bytes, automatically base64-encoded on the wire.
+Content is omitted by default for reads; pass `includeContent: true` to retrieve it. Found documents are
+returned in request order, with missing IDs omitted. Document metadata is opaque and not searchable.
+Counts (`documentCount`, `totalHits`) remain protobuf JSON strings to preserve uint64 precision.
+
+Writes, including document deletion, default to return-on-acceptance. `INDEX_ACK_QUEUED` does not mean
+the data is visible yet. Use explicit wait-for-completion options for deterministic assertions, and check
+`failedItems` even when the request succeeds. Wait timeouts must be positive and shorter than any
+applicable request/resiliency deadline. HTTP failures throw with the status and response body.
+
+Use `searchStoreName`, `meilisearchContainer: new MeilisearchContainer(customImage)`, `apiKey`, or the
+component's `timeout` (a Go duration) to customize provisioning. The default image is
+`getmeili/meilisearch:v1.37.0`, with a randomly generated master key and analytics disabled.
+Alternatively, supply `meilisearchHost` (a URL reachable **from the sidecar**) and `apiKey` to use an
+external provider without starting one. Do not combine `meilisearchHost` and `meilisearchContainer`.
+The harness stops its managed containers and any network it creates, but leaves caller-supplied networks
+and external providers running. `getStartedDaprContainer().getMeilisearchContainer()` exposes the managed
+provider's host endpoint and API key for backend-specific assertions.
+
+The Search integration suite is explicitly opt-in until a supporting RC is available. In PowerShell:
+
+```powershell
+$env:DAPR_SEARCH_RUNTIME_IMAGE = "daprio/daprd:edge" # Or a supporting RC image when available
+npm test -- --runInBand --runTestsByPath src\SearchHarness.test.ts src\MeilisearchContainer.test.ts
+```
+
+`edge` is a moving development tag, not a pinned release. `DAPR_SEARCH_RUNTIME_IMAGE` selects the sidecar
+image for these tests only. Without it, Search integration
+tests are skipped; unit tests and the standalone Meilisearch container test still run. An explicitly
+selected unsupported image fails rather than silently skipping the integration checks.
+
 ## Dapr Workflow Testing
 
 You can use `WorkflowHarness` or `.withWorkflow()` on `DaprContainer` to test Dapr Workflows with an automated Redis actor state store, placement service, and scheduler service:
