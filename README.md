@@ -1,6 +1,8 @@
+# Dapr TestContainer for NodeJS
+
 [![NPM Version](https://img.shields.io/npm/v/%40dapr%2Ftestcontainer-node?style=flat&logo=npm&label=Latest%20version)](https://www.npmjs.com/package/@dapr/testcontainer-node) [![NPM Downloads](https://img.shields.io/npm/dy/%40dapr%2Ftestcontainer-node?style=flat&logo=npm&label=Downloads)](https://www.npmjs.com/package/@dapr/testcontainer-node) [![GitHub License](https://img.shields.io/github/license/dapr/testcontainer-node?style=flat&label=License&logo=github)](https://github.com/dapr/testcontainer-node/blob/main/LICENSE) [![Discord](https://img.shields.io/discord/778680217417809931?label=Discord&style=flat&logo=discord)](http://bit.ly/dapr-discord) [![YouTube Channel Views](https://img.shields.io/youtube/channel/views/UCtpSQ9BLB_3EXdWAUQYwnRA?style=flat&label=YouTube%20views&logo=youtube)](https://youtube.com/@daprdev) [![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/daprdev?logo=x&style=flat)](https://twitter.com/daprdev)
 
-# Dapr TestContainer for NodeJS
+`@dapr/testcontainer-node` is a Testcontainers module for testing Dapr apps in Node.js: workflows, actors, pub/sub, state, jobs and more, without installing Dapr.
 
 Dapr is a CNCF and open-source project that enables developers with consistent application-level APIs to develop
 secure, scalable, and resilient cloud-native applications.
@@ -9,7 +11,26 @@ The Testcontainers Dapr module for NodeJS enables local development and testing 
 providing a DaprContainer that sets up a Dapr sidecar instance. This container provides an in-memory implementation of
 Dapr APIs by default, facilitating testing without requiring a full Dapr installation or external dependencies.
 
-Usage examples can be found in [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/ActorHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ActorHarness.test.ts), [`src/ConversationHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ConversationHarness.test.ts), [`src/CryptographyHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/CryptographyHarness.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/SecretStoreHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/SecretStoreHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts).
+Usage examples can be found in [`src/WorkflowHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/WorkflowHarness.test.ts), [`src/DaprContainer.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/DaprContainer.test.ts), [`src/ActorHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ActorHarness.test.ts), [`src/ConversationHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/ConversationHarness.test.ts), [`src/CryptographyHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/CryptographyHarness.test.ts), [`src/PubSubHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/PubSubHarness.test.ts), [`src/SecretStoreHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/SecretStoreHarness.test.ts), [`src/StateManagementHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/StateManagementHarness.test.ts), and [`src/JobsHarness.test.ts`](https://github.com/dapr/testcontainer-node/blob/main/src/JobsHarness.test.ts).
+
+**Prerequisites:** a running Docker (or Docker-compatible) engine and Node.js 24, the version this package is built and tested with.
+
+## Harnesses
+
+| Building block   | Section                                                         |
+| ---------------- | --------------------------------------------------------------- |
+| Workflow         | [Dapr Workflow Testing](#dapr-workflow-testing)                 |
+| Pub/Sub          | [Dapr PubSub Testing](#dapr-pubsub-testing)                     |
+| State management | [Dapr State Management Testing](#dapr-state-management-testing) |
+| Binary store     | [Dapr Binary Store Testing](#dapr-binary-store-testing)         |
+| Vector           | [Dapr Vector Testing](#dapr-vector-testing)                     |
+| Search           | [Dapr Search Testing](#dapr-search-testing)                     |
+| Actors           | [Dapr Actor Testing](#dapr-actor-testing)                       |
+| Conversation     | [Dapr Conversation Testing](#dapr-conversation-testing)         |
+| Cryptography     | [Dapr Cryptography Testing](#dapr-cryptography-testing)         |
+| Secrets          | [Dapr Secrets Testing](#dapr-secrets-testing)                   |
+| Distributed lock | [Dapr Distributed Lock Testing](#dapr-distributed-lock-testing) |
+| Jobs             | [Dapr Jobs Testing](#dapr-jobs-testing)                         |
 
 ## Using the library
 
@@ -34,6 +55,81 @@ import { DaprContainer, getDaprRuntimeImage } from "@dapr/testcontainer-node";
 
 const dapr = new DaprContainer(getDaprRuntimeImage("1.18.4"));
 ```
+
+## Dapr Workflow Testing
+
+You can use `WorkflowHarness` or `.withWorkflow()` on `DaprContainer` to test Dapr Workflows with an automated Redis actor state store, placement service, and scheduler service:
+
+```typescript
+import { WorkflowHarness } from "@dapr/testcontainer-node";
+import { WorkflowRuntime, DaprWorkflowClient } from "@dapr/dapr";
+
+const harness = new WorkflowHarness();
+await harness.start();
+
+const runtime = harness.createWorkflowRuntime();
+runtime.registerWorkflow(myWorkflow);
+runtime.registerActivity(myActivity);
+await runtime.start();
+
+const client = harness.createWorkflowClient();
+const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
+const state = await client.waitForWorkflowCompletion(instanceId);
+
+await harness.stop();
+```
+
+### Capturing workflow traces
+
+Enable runtime telemetry capture before starting the harness:
+
+```typescript
+const harness = new WorkflowHarness().enableTelemetryCapture();
+try {
+  await harness.start();
+  const runtime = harness.createWorkflowRuntime();
+  runtime.registerWorkflow(myWorkflow);
+  runtime.registerActivity(myActivity);
+  await runtime.start();
+
+  const client = harness.createWorkflowClient();
+  const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
+  await client.waitForWorkflowCompletion(instanceId);
+
+  const telemetry = harness.getTelemetryCollector()!;
+  const workflowSpan = await telemetry.waitForZipkinSpan((span) => span.name === "orchestration||myworkflow", 30_000);
+  const activitySpan = await telemetry.waitForZipkinSpan(
+    (span) => span.name === "activity||myactivity" && span.traceId === workflowSpan.traceId,
+    30_000
+  );
+  console.log(workflowSpan.traceId, activitySpan.parentId);
+  console.log(telemetry.getZipkinSpans());
+} finally {
+  await harness.stop();
+}
+```
+
+Alternatively, pass `{ telemetryCapture: true }` to `WorkflowHarness`, or use
+`new DaprContainer().withNetwork(network).withTelemetryCapture()` for any Dapr building block.
+Both the builder and started container expose `getTelemetryCollector()` (undefined when capture is disabled).
+
+Like the .NET testcontainer, `DaprTelemetryCollector` receives Dapr's OpenTelemetry-generated runtime spans
+through the **Zipkin v2 JSON exporter**, not OTLP. Capture is opt-in and sets sampling to `"1"`, replacing any
+configured Zipkin endpoint while preserving other configuration, including OTLP export and actor features.
+The receiver binds an available host port, makes it reachable through Testcontainers host-port forwarding,
+and stops with the sidecar, including when startup fails. No external tracing backend is needed.
+
+`getZipkinSpans()` returns independent snapshots with trace/span/parent IDs, names, kinds, endpoint metadata,
+tags, and microsecond timestamps/durations. Export is asynchronous, so use `waitForZipkinSpan(predicate, timeoutMs, signal?)`
+rather than inspecting immediately after a workflow finishes. Waits support `AbortSignal` cancellation and report
+captured span details on timeout. Zipkin exports span names in lowercase; workflow and activity names above
+correspond to functions named `myWorkflow` and `myActivity`. Filter by trace ID or instance tags when running multiple workflows.
+Snapshots remain available after shutdown; collection is in-memory and intended for bounded test runs.
+
+The collector can also be started independently with `await new DaprTelemetryCollector().start()` and disposed
+with `stop()` or `await using`. Its local endpoint is available via `getZipkinEndpointAddress()`.
+This captures **runtime-exported spans only**; it does not install a Node OpenTelemetry provider or emulate
+the .NET SDK's in-process `ActivitySource` listener.
 
 ## Dapr PubSub Testing
 
@@ -268,81 +364,6 @@ image for these tests only. Without it, Search integration
 tests are skipped; unit tests and the standalone Meilisearch container test still run. An explicitly
 selected unsupported image fails rather than silently skipping the integration checks.
 
-## Dapr Workflow Testing
-
-You can use `WorkflowHarness` or `.withWorkflow()` on `DaprContainer` to test Dapr Workflows with an automated Redis actor state store, placement service, and scheduler service:
-
-```typescript
-import { WorkflowHarness } from "@dapr/testcontainer-node";
-import { WorkflowRuntime, DaprWorkflowClient } from "@dapr/dapr";
-
-const harness = new WorkflowHarness();
-await harness.start();
-
-const runtime = harness.createWorkflowRuntime();
-runtime.registerWorkflow(myWorkflow);
-runtime.registerActivity(myActivity);
-await runtime.start();
-
-const client = harness.createWorkflowClient();
-const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
-const state = await client.waitForWorkflowCompletion(instanceId);
-
-await harness.stop();
-```
-
-### Capturing workflow traces
-
-Enable runtime telemetry capture before starting the harness:
-
-```typescript
-const harness = new WorkflowHarness().enableTelemetryCapture();
-try {
-  await harness.start();
-  const runtime = harness.createWorkflowRuntime();
-  runtime.registerWorkflow(myWorkflow);
-  runtime.registerActivity(myActivity);
-  await runtime.start();
-
-  const client = harness.createWorkflowClient();
-  const instanceId = await client.scheduleNewWorkflow(myWorkflow, "input");
-  await client.waitForWorkflowCompletion(instanceId);
-
-  const telemetry = harness.getTelemetryCollector()!;
-  const workflowSpan = await telemetry.waitForZipkinSpan((span) => span.name === "orchestration||myworkflow", 30_000);
-  const activitySpan = await telemetry.waitForZipkinSpan(
-    (span) => span.name === "activity||myactivity" && span.traceId === workflowSpan.traceId,
-    30_000
-  );
-  console.log(workflowSpan.traceId, activitySpan.parentId);
-  console.log(telemetry.getZipkinSpans());
-} finally {
-  await harness.stop();
-}
-```
-
-Alternatively, pass `{ telemetryCapture: true }` to `WorkflowHarness`, or use
-`new DaprContainer().withNetwork(network).withTelemetryCapture()` for any Dapr building block.
-Both the builder and started container expose `getTelemetryCollector()` (undefined when capture is disabled).
-
-Like the .NET testcontainer, `DaprTelemetryCollector` receives Dapr's OpenTelemetry-generated runtime spans
-through the **Zipkin v2 JSON exporter**, not OTLP. Capture is opt-in and sets sampling to `"1"`, replacing any
-configured Zipkin endpoint while preserving other configuration, including OTLP export and actor features.
-The receiver binds an available host port, makes it reachable through Testcontainers host-port forwarding,
-and stops with the sidecar, including when startup fails. No external tracing backend is needed.
-
-`getZipkinSpans()` returns independent snapshots with trace/span/parent IDs, names, kinds, endpoint metadata,
-tags, and microsecond timestamps/durations. Export is asynchronous, so use `waitForZipkinSpan(predicate, timeoutMs, signal?)`
-rather than inspecting immediately after a workflow finishes. Waits support `AbortSignal` cancellation and report
-captured span details on timeout. Zipkin exports span names in lowercase; workflow and activity names above
-correspond to functions named `myWorkflow` and `myActivity`. Filter by trace ID or instance tags when running multiple workflows.
-Snapshots remain available after shutdown; collection is in-memory and intended for bounded test runs.
-
-The collector can also be started independently with `await new DaprTelemetryCollector().start()` and disposed
-with `stop()` or `await using`. Its local endpoint is available via `getZipkinEndpointAddress()`.
-This captures **runtime-exported spans only**; it does not install a Node OpenTelemetry provider or emulate
-the .NET SDK's in-process `ActivitySource` listener.
-
 ## Dapr Actor Testing
 
 You can use `ActorHarness` or `.withActors()` on `DaprContainer` to test Dapr Actors backed by the Redis actor state store, placement service, and scheduler service:
@@ -517,6 +538,37 @@ const dapr = new DaprContainer()
   .withSecretStore({ secrets: { alpha: "one" } })
   .withSecretStore({ name: "second-store", secrets: { beta: "two" } });
 ```
+
+## Dapr Jobs Testing
+
+You can use `JobsHarness` to test the alpha Dapr Jobs API. The harness starts a Dapr sidecar with the scheduler
+service and calls the `/v1.0-alpha1/jobs` HTTP endpoints for you:
+
+```typescript
+import { JobsApiError, JobsHarness } from "@dapr/testcontainer-node";
+
+const harness = new JobsHarness({ appId: "jobs-crud-app" });
+try {
+  await harness.start();
+
+  await harness.scheduleJob("test-job", {
+    schedule: "@every 1h",
+    data: { hello: "world" },
+    repeats: 3,
+  });
+
+  const job = await harness.getJob("test-job");
+  console.log(job.name);
+
+  await harness.deleteJob("test-job");
+} finally {
+  await harness.stop();
+}
+```
+
+Either `schedule` or `dueTime` is required. A failed request, such as getting a job that does not exist, throws a
+`JobsApiError` with the HTTP `statusCode`. Pass `overwrite: true` to replace an existing job, and `appPort` with
+`appChannelAddress` to have the sidecar deliver triggered jobs to your app's `/job/<name>` endpoint.
 
 ## Versions
 
